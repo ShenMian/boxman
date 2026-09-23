@@ -1071,14 +1071,19 @@ public class myGameViewMap extends JPanel implements MouseListener, MouseMotionL
         if (myMaps.curMap == null) return;
 
         // 显示背景色或背景图片
+        int bkColor = (myMaps.m_Sets[4] != 0) ? myMaps.m_Sets[4] : 0xFFFFFFFF;
         if (myMaps.bk_Pic == null || myMaps.bk_Pic.length() <= 0 || myMaps.bk_Pic.equals("使用背景色")) {
-            setBackgroundColor(myMaps.m_Sets[4]);  //设置背景色
+            setBackgroundColor(bkColor);  //设置背景色
+            canvas.drawColor(bkColor);
         } else {
             if (myMaps.bkPict != null) {
                 for (int i = 0; i <= w_bkNum; i++) {
                     for (int j = 0; j <= h_bkNum; j++)
                         canvas.drawBitmap(myMaps.bkPict, w_bkPic * i, h_bkPic * j, null);
                 }
+            } else {
+                setBackgroundColor(bkColor);
+                canvas.drawColor(bkColor);
             }
         }
 
@@ -2712,6 +2717,38 @@ public class myGameViewMap extends JPanel implements MouseListener, MouseMotionL
         // 明暗度调整条
         mrBrightnessShade  = new Rect(220, m_nArenaTop + 50,  859, m_nArenaTop + 120);
         mrBrightnessShade2 = new Rect(220, m_nArenaTop + 150, 859, m_nArenaTop + 220);
+
+        // 动态根据实际组件尺寸更新信息栏及按钮区域
+        int curW = getWidth();
+        int curH = getHeight();
+        if (curW > 0 && curH > 0) {
+            m_rPre.set(0, 0, m_nArenaTop * 4 / 3, m_nArenaTop);
+            m_rNext.set(curW - m_nArenaTop * 4 / 3, 0, curW, m_nArenaTop);
+
+            int w0 = m_rPre.right + 8;
+            int w = ((m_rNext.left - 8) - w0) / 4;
+            m_rTrans.set(w0, 0, w0 + w, m_nArenaTop - 2);
+            m_rProgress_Bar.set(w0 + w, 0, w0 + w * 2 - 8, m_nArenaTop - 2);
+            m_rNext_Speed.set(w0 + w * 2, 0, w0 + w * 3 - 8, m_nArenaTop - 2);
+            m_rChangeBK.set(w0 + w * 3, 0, m_rNext.left - 8, m_nArenaTop - 2);
+
+            ss = sp2px(myMaps.ctxDealFile, 16);
+            m_rRecording.set(0, m_nArenaTop + 8, ss * 4 + ss / 2, m_nArenaTop + ss + ss / 2 + 8);
+
+            m_rUnDo.set(m_nArenaTop, curH - m_nArenaTop * 3, m_nArenaTop * 3, curH - m_nArenaTop);
+            m_rReDo.set(m_rUnDo.right + m_nArenaTop, m_rUnDo.top, m_rUnDo.right + m_nArenaTop * 3, m_rUnDo.bottom);
+
+            m_rPre_BK.set(curW - m_nArenaTop * 4, m_nArenaTop * 3 / 2, curW - m_nArenaTop * 2, m_nArenaTop * 2 + m_nArenaTop * 3 / 2);
+            m_rColor_BK.set(m_rPre_BK.left, m_rPre_BK.bottom, m_rPre_BK.right, m_rPre_BK.bottom + m_nArenaTop * 2);
+            m_rNext_BK.set(m_rPre_BK.left, m_rColor_BK.bottom, m_rPre_BK.right, m_rColor_BK.bottom + m_nArenaTop * 2);
+            m_rPre_Skin.set(m_rPre_BK.left - m_nArenaTop * 2, m_rPre_BK.top + m_nArenaTop * 2, m_rPre_BK.left, m_rPre_BK.top + m_nArenaTop * 4);
+            m_rNext_Skin.set(m_rPre_BK.right, m_rColor_BK.top, curW, m_rColor_BK.bottom);
+
+            if (myMaps.bkPict != null) {
+                w_bkNum = curW / w_bkPic + 1;
+                h_bkNum = curH / h_bkPic + 1;
+            }
+        }
 
         invalidate();
     }
