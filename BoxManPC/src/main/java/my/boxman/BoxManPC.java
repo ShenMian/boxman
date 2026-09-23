@@ -9,6 +9,8 @@ import javax.swing.tree.TreePath;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.File;
 import java.util.ArrayList;
 
@@ -136,16 +138,15 @@ public class BoxManPC extends JFrame {
 
     private void openSet(long setId, String setTitle) {
         System.out.println("打开关卡集: id=" + setId + ", title=" + setTitle);
-        mySQLite.m_SQL.get_Levels(setId);
-        if (myMaps.m_lstMaps == null || myMaps.m_lstMaps.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "关卡集中没有关卡！", "提示", JOptionPane.INFORMATION_MESSAGE);
-            return;
-        }
-        myMaps.curMap = myMaps.m_lstMaps.get(0);
-        myMaps.m_nTrun = myMaps.curMap.Trun;
         SwingUtilities.invokeLater(() -> {
-            myGameView game = new myGameView();
-            game.setVisible(true);
+            myGridView grid = new myGridView(setId, setTitle);
+            grid.addWindowListener(new WindowAdapter() {
+                @Override
+                public void windowClosed(WindowEvent e) {
+                    refreshTree();
+                }
+            });
+            grid.setVisible(true);
         });
     }
 
@@ -167,8 +168,11 @@ public class BoxManPC extends JFrame {
         viewMenu.add(itemRefresh);
 
         JMenu helpMenu = new JMenu("帮助(H)");
+        JMenuItem itemHelp = new JMenuItem("推箱快手说明");
+        itemHelp.addActionListener(e -> new Help(0).setVisible(true));
         JMenuItem itemAbout = new JMenuItem("关于推箱快手");
         itemAbout.addActionListener(e -> showAboutDialog());
+        helpMenu.add(itemHelp);
         helpMenu.add(itemAbout);
 
         menuBar.add(fileMenu);
@@ -184,7 +188,138 @@ public class BoxManPC extends JFrame {
         chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("关卡文件 (*.txt;*.sok;*.xsb)", "txt", "sok", "xsb"));
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             File sel = chooser.getSelectedFile();
-            JOptionPane.showMessageDialog(this, "已选择导入文件: " + sel.getAbsolutePath(), "关卡导入", JOptionPane.INFORMATION_MESSAGE);
+            importLevelFile(sel);
+        }
+    }
+
+    public int importLevelFile(File file) {
+        return importLevelFile(file, false);
+    }
+
+    public int importLevelFile(File file, boolean silent) {
+        try {
+            String fileName = file.getName();
+            int dotIdx = fileName.lastIndexOf('.');
+            String setTitle = dotIdx > 0 ? fileName.substring(0, dotIdx) : fileName;
+
+            long targetSetId = mySQLite.m_SQL.find_Set(setTitle);
+            if (targetSetId <= 0) {
+                targetSetId = mySQLite.m_SQL.add_T(3, setTitle, "", "");
+            }
+            if (targetSetId <= 0) {
+                if (!silent) JOptionPane.showMessageDialog(this, "创建关卡集失败！", "错误", JOptionPane.ERROR_MESSAGE);
+                return 0;
+            }
+
+            String encode = myMaps.getTxtEncode(new java.io.FileInputStream(file));
+            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(new java.io.FileInputStream(file), encode));
+
+            StringBuilder g_Map = new StringBuilder();      //关卡地图
+            StringBuilder g_Title = new StringBuilder();    //标题
+            StringBuilder g_Author = new StringBuilder();   //作者
+            StringBuilder g_Comment = new StringBuilder();  //"注释"
+            StringBuilder sSolution = new StringBuilder();  //答案
+            mapNode nd = null;
+            long id;
+
+            boolean flg = false;   //是否 XSB
+            byte flg2 = 0;  //是否 Comment
+            boolean flg3 = false;  //是否答案
+            byte flg4 = 0;  //是否开始了 Title
+            byte flg5 = 0;  //是否开始了 author
+            int importedCount = 0;
+            int num0 = 0;
+
+            String line;
+            while (true) {
+                line = reader.readLine();
+                if (line == null || myMaps.isXSB(line)) {
+                    if (!flg || line == null) {
+                        if (line == null && g_Map.length() <= 0) break;
+                        num0++;
+                        if (num0 > 1) {
+                            if (nd == null) {
+                                nd = new mapNode(g_Map.toString(), g_Title.toString(), g_Author.toString(), g_Comment.toString());
+                            }
+                            if (!nd.Title.equals("无效关卡") || nd.Cols != 2 || nd.Rows != 1) {
+                                id = mySQLite.m_SQL.add_L(targetSetId, nd);
+                                if (id > 0) importedCount++;
+                            }
+                        }
+                        if (sSolution.length() > 0) {
+                            mySQLite.m_SQL.inp_Ans(nd, sSolution.toString());
+                        }
+                        if (line == null) break;
+
+                        if (num0 > 1) {
+                            g_Map = new StringBuilder();
+                            g_Title = new StringBuilder();
+                            g_Author = new StringBuilder();
+                            g_Comment = new StringBuilder();
+                            sSolution = new StringBuilder();
+                            flg3 = false;
+                            flg2 = 0;
+                            flg4 = 0;
+                            flg5 = 0;
+                            nd = null;
+                        }
+                        flg = true;
+                    }
+                    if (g_Map.length() > 0) g_Map.append('\n');
+                    g_Map.append(line);
+                } else if (flg2 == 0 && line.trim().toLowerCase().startsWith("title:") && flg4++ == 0) {
+                    g_Title.append(line.substring(line.indexOf(":") + 1).trim());
+                    flg = false;
+                    flg3 = false;
+                } else if (flg2 == 0 && line.trim().toLowerCase().startsWith("author:") && flg5++ == 0) {
+                    g_Author.append(line.substring(line.indexOf(":") + 1).trim());
+                    flg = false;
+                    flg3 = false;
+                } else if (line.trim().toLowerCase().startsWith("solution")) {
+                    if (sSolution.length() > 0) {
+                        if (nd == null) {
+                            nd = new mapNode(g_Map.toString(), g_Title.toString(), g_Author.toString(), g_Comment.toString());
+                        }
+                        mySQLite.m_SQL.inp_Ans(nd, sSolution.toString());
+                        sSolution = new StringBuilder();
+                    }
+                    if (line.indexOf(":") >= 0) {
+                        sSolution.append(line.substring(line.indexOf(":") + 1).trim());
+                    } else if (line.indexOf(")") >= 0) {
+                        sSolution.append(line.substring(line.indexOf(")") + 1).trim());
+                    }
+                    if (flg2 > 0) flg2++;
+                    flg = false;
+                    flg3 = true;
+                } else if (line.trim().toLowerCase().startsWith("comment-end:") ||
+                        line.trim().toLowerCase().startsWith("comment_end:")) {
+                    if (flg2 > 0) flg2++;
+                } else if (line.trim().toLowerCase().startsWith("comment:") && flg2++ == 0) {
+                    flg3 = false;
+                    flg = false;
+                    line = line.substring(line.indexOf(":") + 1).trim();
+                    if (!line.isEmpty()) g_Comment.append(line);
+                } else if (flg2 != 1 && (line.indexOf(';') == 0 || line.matches("\\s*"))) {
+                    flg = false;
+                } else if (flg2 == 1) {
+                    if (!g_Comment.toString().isEmpty()) g_Comment.append('\n');
+                    g_Comment.append(line);
+                } else if (flg3) {
+                    sSolution.append(line);
+                } else {
+                    flg = false;
+                }
+            }
+            reader.close();
+
+            refreshTree();
+            if (!silent) {
+                JOptionPane.showMessageDialog(this, "成功导入关卡集: " + setTitle + "\n共导入 " + importedCount + " 个关卡", "导入成功", JOptionPane.INFORMATION_MESSAGE);
+            }
+            return importedCount;
+        } catch (Throwable ex) {
+            if (!silent) JOptionPane.showMessageDialog(this, "导入关卡文件失败: " + ex.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
+            return 0;
         }
     }
 
@@ -197,9 +332,7 @@ public class BoxManPC extends JFrame {
     }
 
     private void showAboutDialog() {
-        JOptionPane.showMessageDialog(this,
-                "推箱快手 (BoxMan) PC版\n严格 1:1 原样等价移植\nJava SE + Swing + FlatLaf",
-                "关于", JOptionPane.INFORMATION_MESSAGE);
+        new myAbout(this).setVisible(true);
     }
 
     private static class SetItem {
