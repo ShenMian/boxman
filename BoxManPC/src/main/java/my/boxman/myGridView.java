@@ -474,13 +474,58 @@ public class myGridView extends JFrame {
 
         private void showContextMenu(MouseEvent e) {
             JPopupMenu menu = new JPopupMenu();
-            JMenuItem miOpen = new JMenuItem("打开");
+            JMenuItem miOpen = new JMenuItem("推此关卡");
             miOpen.addActionListener(act -> openGame(node, index));
             menu.add(miOpen);
 
-            JMenuItem miDetail = new JMenuItem("详细信息...");
+            JMenuItem miEdit = new JMenuItem("编辑关卡...");
+            miEdit.addActionListener(act -> {
+                myMaps.curMap = node;
+                myEditView ev = new myEditView();
+                ev.setVisible(true);
+            });
+            menu.add(miEdit);
+
+            JMenuItem miExport = new JMenuItem("导出关卡...");
+            miExport.addActionListener(act -> {
+                myMaps.curMap = node;
+                myExport exp = new myExport();
+                exp.setVisible(true);
+            });
+            menu.add(miExport);
+
+            JMenuItem miCopyXsb = new JMenuItem("复制 XSB 到剪贴板");
+            miCopyXsb.addActionListener(act -> {
+                if (node.Map != null) {
+                    try {
+                        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(node.Map), null);
+                        JOptionPane.showMessageDialog(myGridView.this, "已复制第 " + (index + 1) + " 关 XSB 数据！");
+                    } catch (Exception ignored) {}
+                }
+            });
+            menu.add(miCopyXsb);
+
+            menu.addSeparator();
+
+            JMenuItem miDetail = new JMenuItem("关卡详细信息...");
             miDetail.addActionListener(act -> new myAbout2(myGridView.this, node).setVisible(true));
             menu.add(miDetail);
+
+            JMenuItem miDelete = new JMenuItem("删除此关卡...");
+            miDelete.addActionListener(act -> {
+                DelDialog dlg = new DelDialog(null, node.Title, delAns -> {
+                    if (mySQLite.m_SQL != null && node.Level_id > 0) {
+                        mySQLite.m_SQL.del_L(node.Level_id);
+                        if (delAns) {
+                            mySQLite.m_SQL.del_S_ALL(node.Level_id);
+                        }
+                        myMaps.m_lstMaps.remove(node);
+                        refreshGrid();
+                    }
+                });
+                dlg.setVisible(true);
+            });
+            menu.add(miDelete);
 
             menu.show(this, e.getX(), e.getY());
         }

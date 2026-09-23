@@ -199,6 +199,8 @@ public class myGameView extends JFrame {
 
         main_bottom = createBottomBar();
         add(main_bottom, BorderLayout.SOUTH);
+
+        setJMenuBar(createMenuBar());
     }
 
     private Icon getScaledIcon(String resName) {
@@ -3050,6 +3052,180 @@ public class myGameView extends JFrame {
         menu.add(itExit);
 
         menu.show(bt_More, 0, -menu.getPreferredSize().height);
+    }
+
+    private JMenuBar createMenuBar() {
+        JMenuBar mb = new JMenuBar();
+
+        // 导航菜单
+        JMenu mNav = new JMenu("导航");
+        JMenuItem miRestart = new JMenuItem("重新开始");
+        miRestart.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, 0));
+        miRestart.addActionListener(e -> {
+            int ret = JOptionPane.showConfirmDialog(this, "重新开始，确定吗？", "重新开始", JOptionPane.YES_NO_OPTION);
+            if (ret == JOptionPane.YES_OPTION) {
+                levelReset(bt_BK.isChecked());
+            }
+        });
+        JMenuItem miGoto = new JMenuItem("跳转到...");
+        miGoto.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_G, InputEvent.CTRL_DOWN_MASK));
+        miGoto.addActionListener(e -> {
+            int cur = (myMaps.m_lstMaps != null && myMaps.curMap != null) ? myMaps.m_lstMaps.indexOf(myMaps.curMap) + 1 : 1;
+            int total = myMaps.m_lstMaps != null ? myMaps.m_lstMaps.size() : 1;
+            GotoDialog dlg = new GotoDialog(this, cur, total, idx -> {
+                if (myMaps.m_lstMaps != null && idx >= 0 && idx < myMaps.m_lstMaps.size()) {
+                    myMaps.curMap = myMaps.m_lstMaps.get(idx);
+                    mMap.initArena();
+                    levelReset(false);
+                    mMap.invalidate();
+                }
+            });
+            dlg.setVisible(true);
+        });
+        mNav.add(miRestart);
+        mNav.add(miGoto);
+        mNav.addSeparator();
+        JMenuItem miClose = new JMenuItem("返回关卡列表");
+        miClose.addActionListener(e -> handleExit());
+        mNav.add(miClose);
+        mb.add(mNav);
+
+        // 操作菜单
+        JMenu mAction = new JMenu("操作");
+        JMenuItem miUndo = new JMenuItem("后退一步");
+        miUndo.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK));
+        miUndo.addActionListener(e -> bt_UnDo.doClick());
+
+        JMenuItem miRedo = new JMenuItem("前进一步");
+        miRedo.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, InputEvent.CTRL_DOWN_MASK));
+        miRedo.addActionListener(e -> bt_ReDo.doClick());
+
+        JMenuItem miSave = new JMenuItem("保存当前状态");
+        miSave.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK));
+        miSave.addActionListener(e -> {
+            if (m_lstMovUnDo.size() > 0 || m_lstMovUnDo2.size() > 0) {
+                saveAns(0);
+            } else {
+                MyToast.showToast(this, "没什么可保存的！", MyToast.LENGTH_SHORT);
+            }
+        });
+
+        JMenuItem miActManager = new JMenuItem("动作管理 (导入/导出动作)");
+        miActManager.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_M, InputEvent.CTRL_DOWN_MASK));
+        miActManager.addActionListener(e -> {
+            myActGMView act = new myActGMView(this, bt_BK.isChecked());
+            act.setVisible(true);
+        });
+
+        JMenuItem miStateBrow = new JMenuItem("关卡状态与答案");
+        miStateBrow.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_B, InputEvent.CTRL_DOWN_MASK));
+        miStateBrow.addActionListener(e -> {
+            myStateBrow sb = new myStateBrow();
+            sb.setVisible(true);
+        });
+
+        mAction.add(miUndo);
+        mAction.add(miRedo);
+        mAction.addSeparator();
+        mAction.add(miSave);
+        mAction.add(miActManager);
+        mAction.add(miStateBrow);
+        mb.add(mAction);
+
+        // 视图菜单
+        JMenu mView = new JMenu("视图");
+        JMenuItem miColor = new JMenuItem("背景颜色...");
+        miColor.addActionListener(e -> {
+            ColorDialog cd = new ColorDialog(this, new Color(myMaps.m_Sets[4]), col -> {
+                myMaps.m_Sets[4] = col.getRGB();
+                mMap.repaint();
+            });
+            cd.setVisible(true);
+        });
+
+        JMenuItem miRule = new JMenuItem("标尺与坐标设置...");
+        miRule.addActionListener(e -> {
+            RuleDialog rd = new RuleDialog(this, (col, mask) -> mMap.repaint());
+            rd.setVisible(true);
+        });
+
+        JMenuItem miExport = new JMenuItem("导出关卡...");
+        miExport.addActionListener(e -> {
+            myExport exp = new myExport();
+            exp.setVisible(true);
+        });
+
+        JMenuItem miGif = new JMenuItem("导出为动画 (GIF)...");
+        miGif.addActionListener(e -> {
+            myGifMakeDialog gd = new myGifMakeDialog(this, "", m_Gif_Start, null, null);
+            gd.setVisible(true);
+        });
+
+        mView.add(miColor);
+        mView.add(miRule);
+        mView.addSeparator();
+        mView.add(miExport);
+        mView.add(miGif);
+        mb.add(mView);
+
+        // 工具菜单
+        JMenu mTool = new JMenu("工具");
+        JMenuItem miEdit = new JMenuItem("关卡编辑器");
+        miEdit.addActionListener(e -> {
+            myEditView ev = new myEditView();
+            ev.setVisible(true);
+        });
+
+        JMenuItem miFind = new JMenuItem("相似关卡对比");
+        miFind.addActionListener(e -> {
+            myFindView fv = new myFindView();
+            fv.setVisible(true);
+        });
+
+        JMenuItem miRecog = new JMenuItem("关卡图像识别");
+        miRecog.addActionListener(e -> {
+            myRecogView rv = new myRecogView();
+            rv.setVisible(true);
+        });
+
+        mTool.add(miEdit);
+        mTool.add(miFind);
+        mTool.add(miRecog);
+        mb.add(mTool);
+
+        // 帮助菜单
+        JMenu mHelp = new JMenu("帮助");
+        JMenuItem miDoc = new JMenuItem("游戏玩法说明");
+        miDoc.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F1, 0));
+        miDoc.addActionListener(e -> {
+            Help h = new Help(0);
+            h.setVisible(true);
+        });
+
+        JMenuItem miAbout = new JMenuItem("关于");
+        miAbout.addActionListener(e -> {
+            myAbout ab = new myAbout(this);
+            ab.setVisible(true);
+        });
+
+        mHelp.add(miDoc);
+        mHelp.add(miAbout);
+        mb.add(mHelp);
+
+        // Map 右键弹出菜单
+        JPopupMenu mapPopup = new JPopupMenu();
+        mapPopup.add(miUndo);
+        mapPopup.add(miRedo);
+        mapPopup.addSeparator();
+        mapPopup.add(miRestart);
+        mapPopup.add(miSave);
+        mapPopup.add(miGoto);
+        mapPopup.addSeparator();
+        mapPopup.add(miActManager);
+        mapPopup.add(miStateBrow);
+        mMap.setComponentPopupMenu(mapPopup);
+
+        return mb;
     }
 
     private void showSetup1Dialog() {
