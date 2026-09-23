@@ -32,6 +32,20 @@ public class Canvas {
         return g2d;
     }
 
+    public void drawColor(int color) {
+        if (g2d != null) {
+            Color old = g2d.getColor();
+            g2d.setColor(new Color(color, true));
+            Shape clip = g2d.getClip();
+            if (clip != null) {
+                g2d.fill(clip);
+            } else {
+                g2d.fillRect(0, 0, 10000, 10000);
+            }
+            g2d.setColor(old);
+        }
+    }
+
     public int save() {
         if (g2d != null) {
             transformStack.push(g2d.getTransform());
