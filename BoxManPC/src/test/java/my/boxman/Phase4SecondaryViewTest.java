@@ -14,7 +14,7 @@ public class Phase4SecondaryViewTest {
 
     @BeforeClass
     public static void setUp() {
-        System.setProperty("java.awt.headless", "true");
+        System.setProperty("java.awt.headless", "false");
         myMaps.sRoot = new File("build/test_boxman_phase4").getAbsolutePath();
         myMaps.m_nWinWidth = 800;
         myMaps.m_nWinHeight = 600;

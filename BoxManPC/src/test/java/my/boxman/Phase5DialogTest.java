@@ -13,7 +13,7 @@ public class Phase5DialogTest {
 
     @BeforeClass
     public static void setUp() {
-        System.setProperty("java.awt.headless", "true");
+        System.setProperty("java.awt.headless", "false");
         myMaps.sRoot = new File("build/test_boxman_phase5").getAbsolutePath();
         myMaps.m_nWinWidth = 800;
         myMaps.m_nWinHeight = 600;

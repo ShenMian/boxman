@@ -24,3 +24,23 @@ dependencies {
     implementation 'com.miglayout:miglayout-swing:11.3'
     testImplementation 'junit:junit:4.13.2'
 }
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'my.boxman.BoxManPC'
+    }
+}
+
+tasks.register('fatJar', Jar) {
+    archiveClassifier = 'all'
+    manifest {
+        attributes 'Main-Class': 'my.boxman.BoxManPC'
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    with jar
+}
+
+

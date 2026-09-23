@@ -12,7 +12,7 @@ public class Phase4BatchBTest {
 
     @BeforeClass
     public static void setUp() {
-        System.setProperty("java.awt.headless", "true");
+        System.setProperty("java.awt.headless", "false");
         myMaps.sRoot = new File("build/test_boxman_phase4b").getAbsolutePath();
         myMaps.m_nWinWidth = 800;
         myMaps.m_nWinHeight = 600;
