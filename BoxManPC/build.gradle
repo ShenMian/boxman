@@ -1,0 +1,26 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+repositories {
+    mavenCentral()
+    maven { url 'https://maven.aliyun.com/repository/public' }
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+application {
+    mainClass = 'my.boxman.BoxManPC'
+}
+
+dependencies {
+    implementation 'org.xerial:sqlite-jdbc:3.45.1.0'
+    implementation 'com.formdev:flatlaf:3.4'
+    implementation 'com.googlecode.json-simple:json-simple:1.1.1'
+    implementation 'com.miglayout:miglayout-swing:11.3'
+    testImplementation 'junit:junit:4.13.2'
+}
