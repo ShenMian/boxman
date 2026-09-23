@@ -136,7 +136,17 @@ public class BoxManPC extends JFrame {
 
     private void openSet(long setId, String setTitle) {
         System.out.println("打开关卡集: id=" + setId + ", title=" + setTitle);
-        JOptionPane.showMessageDialog(this, "已选择关卡集: " + setTitle + " (ID: " + setId + ")\n进入关卡网格/游戏窗口准备中...", "关卡集", JOptionPane.INFORMATION_MESSAGE);
+        mySQLite.m_SQL.get_Levels(setId);
+        if (myMaps.m_lstMaps == null || myMaps.m_lstMaps.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "关卡集中没有关卡！", "提示", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        myMaps.curMap = myMaps.m_lstMaps.get(0);
+        myMaps.m_nTrun = myMaps.curMap.Trun;
+        SwingUtilities.invokeLater(() -> {
+            myGameView game = new myGameView();
+            game.setVisible(true);
+        });
     }
 
     private JMenuBar createMenuBar() {
