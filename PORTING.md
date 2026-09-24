@@ -1,5 +1,12 @@
 # 推箱快手 Android → PC (Java Swing) 移植计划
 
+> **⚠️ 目录结构变更（2026-09-24）**
+> 本计划书写于移植开始前，文中出现的 `BoxManPC/` 目录**现已更名为 `desktop/`**；
+> 原版 Android 工程（原根目录的 `app/` 及根级 Gradle 文件）整体移入 `android/`。
+> 仓库根目录现在只有：`desktop/`（移植产物）、`android/`（原版参考）、
+> `README.md`、`PORTING.md`（本文）、`PORTING_AUDIT.md`。
+> **文中其余内容（类名如 `BoxManPC.java`、`my.boxman.BoxManPC`、`BoxManPC.jar`）均未变，无需换算。**
+
 ## 项目概况与移植原则
 
 将 **推箱快手**（Sokoban / BoxMan）从 Android 平台完整移植到 PC (Java SE + Swing)。全工程约 39,600 行 Java 源码、41 个 XML 布局、33 个 PNG 资源。
@@ -44,7 +51,7 @@
 ### 0.1 创建 Gradle Java SE 项目
 
 ```
-BoxManPC/
+desktop/          # 计划书原写作 BoxManPC/
 ├── build.gradle              # Java SE 项目
 ├── src/main/java/my/boxman/  # 源码（从 Android 项目复制）
 ├── src/main/resources/       # 资源文件
@@ -80,9 +87,9 @@ dependencies {
 
 ### 0.2 复制源码和资源
 
-1. 将 `app/src/main/java/my/boxman/` 全部复制到 `src/main/java/my/boxman/`
-2. 将 `app/src/main/assets/` 复制到 `src/main/resources/assets/`
-3. 将 `app/src/main/res/drawable/*.png` 复制到 `src/main/resources/drawable/`
+1. 将 `android/app/src/main/java/my/boxman/` 全部复制到 `desktop/src/main/java/my/boxman/`
+2. 将 `android/app/src/main/assets/` 复制到 `desktop/src/main/resources/assets/`
+3. 将 `android/app/src/main/res/drawable/*.png` 复制到 `desktop/src/main/resources/drawable/`
 4. 删除 `service/MyService.java`（PC 端无需保活）
 
 ### 0.3 验收标准

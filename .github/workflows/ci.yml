@@ -5,11 +5,11 @@ on:
     branches:
       - main
     paths:
-      - 'BoxManPC/**'
+      - 'desktop/**'
       - '.github/workflows/ci.yml'
   pull_request:
     paths:
-      - 'BoxManPC/**'
+      - 'desktop/**'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
 
@@ -32,7 +32,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: BoxManPC
+        working-directory: desktop
 
     steps:
       - name: Checkout
@@ -56,7 +56,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: BoxManPC-fat-jar
-          path: BoxManPC/build/libs/*-all.jar
+          path: desktop/build/libs/*-all.jar
           if-no-files-found: error
 
       - name: Upload test reports
@@ -65,8 +65,8 @@ jobs:
         with:
           name: BoxManPC-test-reports
           path: |
-            BoxManPC/build/reports/tests/test
-            BoxManPC/build/test-results/test
+            desktop/build/reports/tests/test
+            desktop/build/test-results/test
           if-no-files-found: ignore
 
   compile-smoke:
@@ -88,7 +88,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: BoxManPC
+        working-directory: desktop
 
     steps:
       - name: Checkout

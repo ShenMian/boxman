@@ -19,7 +19,7 @@ import java.io.File;
  * 提示条单独渲染，再按 {@link MyToast#computeToastLocation} 算出的坐标贴上去。
  * 坐标算法与真机共用同一份代码，所以位置是可信的。
  *
- * <p>产物：{@code BoxManPC/build/ui-snapshot/toast.png}
+ * <p>产物：{@code desktop/build/ui-snapshot/toast.png}
  */
 public class ToastSnapshotTool {
 

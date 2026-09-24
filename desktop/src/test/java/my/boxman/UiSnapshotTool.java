@@ -13,7 +13,7 @@ import java.io.File;
  * 开发辅助：把主界面渲染成 PNG，用于与安卓原版截图逐像素比对。
  * 不指定窗口尺寸，直接用 BoxManPC 自身的手机竖屏默认尺寸，
  * 这样渲染结果与「原版截图 ÷ density」得到的 dp 画布一一对应。
- * 产物：BoxManPC/build/ui-snapshot/main-window.png
+ * 产物：desktop/build/ui-snapshot/main-window.png
  */
 public class UiSnapshotTool {
 

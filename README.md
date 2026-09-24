@@ -1,7 +1,34 @@
-# 推箱快手安卓版
+# BoxMan
 
-## 版权说明
+[![CI](https://github.com/ShenMian/boxman/actions/workflows/ci.yml/badge.svg)](https://github.com/ShenMian/boxman/actions/workflows/ci.yml)
 
-1. 本软件中的部分代码，采用或参考了网上的开源代码，在此表示感谢。
-2. 本软件中使用到的图片素材来源于网络，版权归原作者所有。
-3. 本软件中附带的关卡文件，版权归关卡原作者所有。
+This is a port of the Android Sokoban game [《推箱快手》(BoxMan)](https://github.com/yuweng227/BoxMan_And) to the desktop.
+
+## Requirements
+
+- **JDK 17 or newer.** The bundled Gradle wrapper is 9.7.1, which requires 17+. CI runs on Temurin 17 and 21.
+  The compiled bytecode still targets **Java 8** (`sourceCompatibility`/`targetCompatibility = 1.8`), so the produced jar runs on any Java 8+ runtime.
+- No Android SDK, no native toolchain, no external solver binary.
+
+## Build and run
+
+```bash
+cd desktop
+
+./gradlew run             # compile and launch the game
+./gradlew test            # run the JUnit suite
+./gradlew fatJar          # build a self-contained jar
+java -jar build/libs/BoxManPC-all.jar
+```
+
+On Linux CI the tests are run under a virtual display because a handful of them render real Swing windows:
+
+```bash
+xvfb-run -a ./gradlew --no-daemon clean test fatJar
+```
+
+On Windows use `gradlew.bat`.
+
+## Credits
+
+The original game is the work of [愉翁](https://github.com/yuweng227).

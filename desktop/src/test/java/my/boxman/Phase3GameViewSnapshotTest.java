@@ -18,7 +18,7 @@ import java.io.File;
  * BoxWorld 组第 3 关（Boxworld 3，信息栏显示「关卡 3」「游标 C4」），
  * 因此这里固定加载同一关，渲染尺寸取 PC 手机竖屏内容区 370×780。
  *
- * <p>产物：{@code BoxManPC/build/ui-snapshot/phase3-game.png}
+ * <p>产物：{@code desktop/build/ui-snapshot/phase3-game.png}
  */
 public class Phase3GameViewSnapshotTest {
 
