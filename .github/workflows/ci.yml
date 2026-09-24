@@ -1,0 +1,114 @@
+name: BoxManPC CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'BoxManPC/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    paths:
+      - 'BoxManPC/**'
+      - '.github/workflows/ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: boxmanpc-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GRADLE_OPTS: '-Dfile.encoding=UTF-8'
+  JAVA_TOOL_OPTIONS: '-Dfile.encoding=UTF-8'
+
+jobs:
+  test:
+    name: Test (Ubuntu / JDK 17 / Xvfb)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: BoxManPC
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run tests and build fat jar
+        run: |
+          chmod +x gradlew
+          xvfb-run -a ./gradlew --no-daemon --stacktrace clean test fatJar
+
+      - name: Upload fat jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: BoxManPC-fat-jar
+          path: BoxManPC/build/libs/*-all.jar
+          if-no-files-found: error
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BoxManPC-test-reports
+          path: |
+            BoxManPC/build/reports/tests/test
+            BoxManPC/build/test-results/test
+          if-no-files-found: ignore
+
+  compile-smoke:
+    name: Compile smoke (${{ matrix.os }} / JDK ${{ matrix.java }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+        java:
+          - '17'
+        include:
+          - os: ubuntu-latest
+            java: '21'
+
+    defaults:
+      run:
+        working-directory: BoxManPC
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace compileJava compileTestJava
+
+      - name: Compile (Windows)
+        if: runner.os == 'Windows'
+        run: .\gradlew.bat --no-daemon --stacktrace compileJava compileTestJava

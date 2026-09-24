@@ -1,0 +1,59 @@
+name: BoxManPC Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing git tag to publish (e.g. v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  GRADLE_OPTS: '-Dfile.encoding=UTF-8'
+  JAVA_TOOL_OPTIONS: '-Dfile.encoding=UTF-8'
+
+jobs:
+  release:
+    name: Build and publish fat jar
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: BoxManPC
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace clean fatJar
+          JAR="$(find build/libs -maxdepth 1 -name '*-all.jar' -print -quit)"
+          test -n "$JAR"
+          sha256sum "$JAR" > "$JAR.sha256"
+          gh release create "$TAG" "$JAR" "$JAR.sha256" \
+            --title "BoxManPC $TAG" \
+            --generate-notes \
+            --verify-tag
