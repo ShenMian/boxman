@@ -1,4 +1,4 @@
-name: BoxManPC Release
+name: Release
 
 on:
   push:
