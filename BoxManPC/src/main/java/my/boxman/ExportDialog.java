@@ -1,5 +1,8 @@
 package my.boxman;
 
+import my.boxman.compat.HoloAlertDialog;
+import my.boxman.compat.HoloContent;
+
 import javax.swing.*;
 import java.awt.*;
 import java.io.File;
@@ -9,9 +12,15 @@ import java.util.List;
 
 /**
  * Batch Export Level Sets Dialog for BoxMan PC (Swing Port).
- * 1:1 functional equivalent of Android's export2_dialog & myExportFragment.
+ *
+ * <p>外壳用 {@link HoloAlertDialog}。标题按原版 {@code BoxMan.java:1193} 的
+ * {@code setTitle("导出")} 取 <b>「导出」</b>，按钮 取消 / 确定。
+ *
+ * <p>原版用 {@code export2_dialog.xml} / {@code export_dialog3.xml} 选择关卡集与导出选项；
+ * PC 版在此之上加了进度条与日志区，属于实现差异，这里保留其功能与公开字段，
+ * 只统一到 Holo 深色外观。
  */
-public class ExportDialog extends JDialog {
+public class ExportDialog extends HoloAlertDialog {
 
     public interface ExportCallback {
         void onExportComplete(String message);
@@ -25,67 +34,84 @@ public class ExportDialog extends JDialog {
     public JTextArea logArea;
     public JButton btStart, btCancel;
 
-    private List<set_Node> availableSets = new ArrayList<>();
+    private final List<set_Node> availableSets = new ArrayList<>();
     private ExportWorker worker;
-    private ExportCallback callback;
+    private final ExportCallback callback;
 
     public ExportDialog(Frame parent, ExportCallback callback) {
-        super(parent, "批量导出关卡集", true);
+        super(parent, "导出");
         this.callback = callback;
-
-        setSize(520, 440);
-        setLocationRelativeTo(parent);
         initUI();
         loadSets();
     }
 
     private void initUI() {
-        setLayout(new BorderLayout(8, 8));
-
-        JPanel topPanel = new JPanel(new BorderLayout(4, 4));
-        topPanel.setBorder(BorderFactory.createEmptyBorder(8, 10, 4, 10));
-        topPanel.add(new JLabel("请选择要导出的关卡集 (可按 Ctrl/Shift 多选):"), BorderLayout.NORTH);
-
         modelSets = new DefaultListModel<>();
         listSets = new JList<>(modelSets);
         listSets.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        topPanel.add(new JScrollPane(listSets), BorderLayout.CENTER);
-        topPanel.setPreferredSize(new Dimension(480, 160));
-        add(topPanel, BorderLayout.NORTH);
+        listSets.setFont(HoloContent.font(Font.PLAIN));
+        listSets.setBackground(HoloContent.BAND);
+        listSets.setForeground(HoloContent.TEXT);
+        listSets.setSelectionBackground(HoloContent.LIST_SELECTED);
+        listSets.setSelectionForeground(HoloContent.TEXT);
+        listSets.setBorder(new javax.swing.border.EmptyBorder(
+                HoloContent.FIELD_PAD, HoloContent.FIELD_PAD,
+                HoloContent.FIELD_PAD, HoloContent.FIELD_PAD));
 
-        JPanel centerPanel = new JPanel(new BorderLayout(6, 6));
-        centerPanel.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
+        JScrollPane listScroll = HoloContent.scroll(listSets);
+        Dimension listSize = new Dimension(288, 150);
+        listScroll.setPreferredSize(listSize);
+        listScroll.setMinimumSize(listSize);
+        listScroll.setMaximumSize(listSize);
+        listScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JPanel opts = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 4));
-        chkIncludeAns = new JCheckBox("包含关卡解答 (Solution)", true);
-        chkOverwrite = new JCheckBox("覆盖已存在同名文档", true);
-        opts.add(chkIncludeAns);
-        opts.add(chkOverwrite);
-        centerPanel.add(opts, BorderLayout.NORTH);
+        chkIncludeAns = HoloContent.check("包含关卡解答 (Solution)", true);
+        chkOverwrite = HoloContent.check("覆盖已存在同名文档", true);
 
         progressBar = new JProgressBar(0, 100);
         progressBar.setStringPainted(true);
-        centerPanel.add(progressBar, BorderLayout.CENTER);
+        progressBar.setFont(HoloContent.font(Font.PLAIN));
+        progressBar.setBackground(HoloContent.FIELD_BG);
+        progressBar.setForeground(HoloContent.HOLO_BLUE);
+        progressBar.setBorderPainted(false);
+        Dimension barSize = new Dimension(288, 24);
+        progressBar.setPreferredSize(barSize);
+        progressBar.setMinimumSize(barSize);
+        progressBar.setMaximumSize(barSize);
 
         logArea = new JTextArea(6, 40);
         logArea.setEditable(false);
         logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        centerPanel.add(new JScrollPane(logArea), BorderLayout.SOUTH);
-        add(centerPanel, BorderLayout.CENTER);
+        logArea.setBackground(HoloContent.FIELD_BG);
+        logArea.setForeground(HoloContent.TEXT);
+        logArea.setCaretColor(HoloContent.TEXT);
+        logArea.setBorder(new javax.swing.border.EmptyBorder(
+                HoloContent.FIELD_PAD, HoloContent.FIELD_PAD,
+                HoloContent.FIELD_PAD, HoloContent.FIELD_PAD));
+        JScrollPane logScroll = HoloContent.scroll(logArea);
+        logScroll.getViewport().setBackground(HoloContent.FIELD_BG);
+        Dimension logSize = new Dimension(288, 110);
+        logScroll.setPreferredSize(logSize);
+        logScroll.setMinimumSize(logSize);
+        logScroll.setMaximumSize(logSize);
+        logScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 8));
-        btStart = new JButton("开始导出");
-        btStart.addActionListener(e -> startExport());
-        btCancel = new JButton("取消");
-        btCancel.addActionListener(e -> {
+        setContentView(HoloContent.column(
+                HoloContent.row(HoloContent.label("请选择要导出的关卡集 (可按 Ctrl/Shift 多选):")),
+                listScroll,
+                HoloContent.row(chkIncludeAns),
+                HoloContent.row(chkOverwrite),
+                HoloContent.row(progressBar),
+                logScroll));
+
+        btCancel = addButton("取消", () -> {
             if (worker != null && !worker.isDone()) {
                 worker.cancel(true);
             }
             dispose();
         });
-        bottomBar.add(btStart);
-        bottomBar.add(btCancel);
-        add(bottomBar, BorderLayout.SOUTH);
+        btStart = addButton("确定", this::startExport);
+        setDefaultButton(btStart);
     }
 
     private void loadSets() {

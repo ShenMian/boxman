@@ -1,13 +1,25 @@
 package my.boxman;
 
+import my.boxman.compat.HoloAlertDialog;
+import my.boxman.compat.HoloContent;
+
 import javax.swing.*;
 import java.awt.*;
 
 /**
  * Grid Ruler Settings Dialog for BoxMan PC (Swing Port).
- * 1:1 functional equivalent of Android's rule_dialog.xml.
+ *
+ * <p>外壳用 {@link HoloAlertDialog}。标题按原版 {@code myEditView.java:848} 的
+ * {@code setTitle("显示标尺的元素")} 取 <b>「显示标尺的元素」</b>，按钮 取消 / 确定。
+ *
+ * <p>内容按原版 {@code res/layout/rule_dialog.xml} 还原：
+ * 「6dp {@code #363636} 条 → 居中一行（{@code TextView "字体颜色: "} + 两个 84dp 的
+ * {@code EditText "颜色示例"}，左白底右黑底、文字色随滑块变化）→ 6dp 条 → 20dp 空行
+ * → 256dp {@code SeekBar}（max 255）→ 20dp 空行」。
+ * 原版用 {@code setMultiChoiceItems({"墙壁","地板","目标","箱子","仓管员"})} 列出元素，
+ * 这里用 5 个深色复选框竖排等价实现。
  */
-public class RuleDialog extends JDialog {
+public class RuleDialog extends HoloAlertDialog {
 
     public interface RuleChangeListener {
         void onRuleChanged(int fontColor, int elementsBitmask);
@@ -18,79 +30,67 @@ public class RuleDialog extends JDialog {
     public JCheckBox chkWall, chkFloor, chkGoal, chkBox, chkPlayer;
     public JButton btOK, btCancel;
 
-    private RuleChangeListener listener;
+    private final RuleChangeListener listener;
 
     public RuleDialog(Frame parent, RuleChangeListener listener) {
-        super(parent, "设置标尺与坐标", true);
+        super(parent, "显示标尺的元素");
         this.listener = listener;
-
-        setSize(420, 320);
-        setLocationRelativeTo(parent);
         initUI();
     }
 
     private void initUI() {
-        setLayout(new BorderLayout(8, 8));
-
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
-
-        // Slider for gray level
         int curGray = myMaps.m_Sets[21] & 0xFF;
-        JPanel pSlider = new JPanel(new BorderLayout(8, 0));
-        pSlider.add(new JLabel("标尺字体灰度:"), BorderLayout.WEST);
-        colorSlider = new JSlider(0, 255, curGray);
-        pSlider.add(colorSlider, BorderLayout.CENTER);
-        content.add(pSlider);
 
-        // Preview labels
-        JPanel pPreview = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 6));
-        lblPreview1 = new JLabel("标尺示例: A1");
-        lblPreview2 = new JLabel("[ 1, 1 ]");
-        updatePreviewColor(curGray);
-        pPreview.add(lblPreview1);
-        pPreview.add(lblPreview2);
-        content.add(pPreview);
+        // 原版两个「颜色示例」框：84dp，左白底、右黑底，文字色 = 当前灰度
+        lblPreview1 = previewBox(Color.WHITE);
+        lblPreview2 = previewBox(Color.BLACK);
 
+        colorSlider = HoloContent.slider(curGray, 256);
         colorSlider.addChangeListener(e -> updatePreviewColor(colorSlider.getValue()));
-
-        content.add(Box.createVerticalStrut(10));
-        content.add(new JLabel("在以下元素上显示标尺/坐标:"));
+        updatePreviewColor(curGray);
 
         int mask = myMaps.m_Sets[22];
-        chkWall = new JCheckBox("墙壁", (mask & 1) > 0);
-        chkFloor = new JCheckBox("地板", (mask & 2) > 0);
-        chkGoal = new JCheckBox("目标", (mask & 4) > 0);
-        chkBox = new JCheckBox("箱子", (mask & 8) > 0);
-        chkPlayer = new JCheckBox("仓管员", (mask & 16) > 0);
+        chkWall = HoloContent.check("墙壁", (mask & 1) > 0);
+        chkFloor = HoloContent.check("地板", (mask & 2) > 0);
+        chkGoal = HoloContent.check("目标", (mask & 4) > 0);
+        chkBox = HoloContent.check("箱子", (mask & 8) > 0);
+        chkPlayer = HoloContent.check("仓管员", (mask & 16) > 0);
 
-        JPanel pChecks = new JPanel(new GridLayout(3, 2, 4, 4));
-        pChecks.add(chkWall);
-        pChecks.add(chkFloor);
-        pChecks.add(chkGoal);
-        pChecks.add(chkBox);
-        pChecks.add(chkPlayer);
-        content.add(pChecks);
+        setContentView(HoloContent.column(
+                HoloContent.row(HoloContent.label("字体颜色: "), lblPreview1,
+                        HoloContent.gap(0), lblPreview2),
+                HoloContent.band(),
+                HoloContent.gap(20),
+                HoloContent.row(colorSlider),
+                HoloContent.gap(20),
+                HoloContent.row(chkWall),
+                HoloContent.row(chkFloor),
+                HoloContent.row(chkGoal),
+                HoloContent.row(chkBox),
+                HoloContent.row(chkPlayer)));
 
-        add(content, BorderLayout.CENTER);
+        btCancel = addButton("取消", this::dispose);
+        btOK = addButton("确定", this::applyAndClose);
+        setDefaultButton(btOK);
+    }
 
-        JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 8));
-        btOK = new JButton("确定");
-        btOK.addActionListener(e -> applyAndClose());
-        btCancel = new JButton("取消");
-        btCancel.addActionListener(e -> dispose());
-        bottomBar.add(btOK);
-        bottomBar.add(btCancel);
-        add(bottomBar, BorderLayout.SOUTH);
+    /** 原版 {@code dialog_rule_color1/2}：固定底色 + 随滑块变化的文字色。 */
+    private static JLabel previewBox(Color bg) {
+        JLabel l = new JLabel("颜色示例", SwingConstants.CENTER);
+        l.setFont(HoloContent.font(Font.PLAIN));
+        l.setOpaque(true);
+        l.setBackground(bg);
+        Dimension d = new Dimension(84, 32);
+        l.setPreferredSize(d);
+        l.setMinimumSize(d);
+        l.setMaximumSize(d);
+        return l;
     }
 
     private void updatePreviewColor(int gray) {
         Color c = new Color(gray, gray, gray);
         lblPreview1.setForeground(c);
         lblPreview2.setForeground(c);
-        lblPreview1.repaint();
-        lblPreview2.repaint();
     }
 
     private void applyAndClose() {

@@ -158,6 +158,10 @@ public class BoxManPC extends JFrame {
         add(actionBar, BorderLayout.NORTH);
 
         // 关卡分类列表（原版 ExpandableListView，铺满整屏）
+        // 换选时整行重绘：BasicTreeUI.getRepaintPathBounds() 只有在打开这个开关时，
+        // 才会把重绘区域从「节点宽度」扩到整行（bounds.x=0, width=tree.getWidth()）；
+        // 否则换选后旧高亮右侧会残留上一次的色块。全工程只有这一棵 JTree。
+        UIManager.put("Tree.repaintWholeRow", Boolean.TRUE);
         levelTree = createLevelTree();
         expandRememberedGroup();
 
@@ -239,6 +243,24 @@ public class BoxManPC extends JFrame {
             @Override
             protected int getRowX(int row, int depth) {
                 return 0;
+            }
+
+            /**
+             * 原版 ExpandableListView 的条目是 {@code match_parent}，选中色块**通栏铺满整屏**
+             * （实测原版截图里选中行 x 从 0 一直到 1259，即整屏宽）。
+             *
+             * <p>而 JTree 默认只把「节点自身宽度」的矩形交给渲染器：{@code paintRow} 收到的
+             * {@code bounds} 来自私有的 {@code getPathBounds(path, insets, buffer)} →
+             * {@code TreeState.getBounds()}，实测同一棵树里逐行不同（组别行 150、子项行 195 / 193），
+             * 于是选中高亮只有文字那么宽。这里把交给渲染器的行矩形撑到树的整宽。
+             */
+            @Override
+            protected void paintRow(Graphics g, Rectangle clipBounds, Insets insets,
+                                    Rectangle bounds, TreePath path, int row,
+                                    boolean isExpanded, boolean hasBeenExpanded, boolean isLeaf) {
+                Rectangle fullRow = new Rectangle(0, bounds.y, tree.getWidth(), bounds.height);
+                super.paintRow(g, clipBounds, insets, fullRow, path, row,
+                        isExpanded, hasBeenExpanded, isLeaf);
             }
         });
 

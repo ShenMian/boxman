@@ -8,12 +8,17 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
 import java.awt.Graphics2D;
+import java.awt.Rectangle;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.util.ArrayList;
+
+import javax.swing.JTree;
 
 public class Phase1CompatTest {
 
@@ -92,6 +97,82 @@ public class Phase1CompatTest {
         canvas.restore();
         Assert.assertEquals("restore 后应回到复合矩阵", 1.5 * 0.74, g.getTransform().getScaleX(), 1e-4);
         g.dispose();
+    }
+
+    /**
+     * 回归：原版 ExpandableListView 的条目是 {@code match_parent}，选中色块**通栏铺满整屏**
+     * （实测原版截图里选中行 x 从 0 一直到 1259，即整屏宽）。
+     *
+     * <p>而 JTree 默认把「节点自身宽度」的矩形交给渲染器：{@code BasicTreeUI.paintRow}
+     * 的 bounds 来自私有的 {@code getPathBounds(path, insets, buffer)} →
+     * {@code TreeState.getBounds()}，实测同一棵树里逐行不同（组别行 150、子项行 195 / 193），
+     * 于是选中高亮只有文字那么宽。这里锁住「高亮必须通栏」。
+     */
+    @Test
+    public void testListSelectionHighlightSpansFullRow() {
+        org.junit.Assume.assumeFalse("需要图形环境",
+                java.awt.GraphicsEnvironment.isHeadless());
+
+        mySQLite.m_SQL = mySQLite.getInstance();
+        mySQLite.m_SQL.openDataBase();
+        myMaps.loadSkins();
+        myMaps.m_nWinWidth = my.boxman.compat.UiWindow.PHONE_WIDTH;
+        myMaps.m_nWinHeight = my.boxman.compat.UiWindow.PHONE_HEIGHT;
+
+        BoxManPC frame = new BoxManPC();
+        my.boxman.compat.UiWindow.applyPhoneSize(frame);
+        frame.addNotify();
+        frame.validate();
+        forceLayout(frame.getContentPane());
+
+        JTree tree = findTree(frame.getContentPane());
+        Assert.assertNotNull("主界面应有 JTree 列表", tree);
+        tree.setSize(tree.getWidth(), tree.getHeight());
+
+        // 选中一个子项行（原版截图里选中的是 BoxWorld）
+        int row = 1;
+        tree.setSelectionRow(row);
+        Rectangle rowBounds = tree.getRowBounds(row);
+
+        BufferedImage img = new BufferedImage(Math.max(1, tree.getWidth()),
+                Math.max(1, tree.getHeight()), BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = img.createGraphics();
+        tree.paint(g);
+        g.dispose();
+        frame.dispose();
+
+        int y = rowBounds.y + rowBounds.height / 2;
+        int first = -1;
+        int last = -1;
+        for (int x = 0; x < img.getWidth(); x++) {
+            if ((img.getRGB(x, y) & 0xFFFFFF) == 0x0064AA) {
+                if (first < 0) first = x;
+                last = x;
+            }
+        }
+        System.out.println("[Phase1] 选中高亮 x=" + first + ".." + last
+                + " 树宽=" + tree.getWidth() + " 行内节点宽=" + rowBounds.width);
+        Assert.assertEquals("选中高亮应从最左开始", 0, first);
+        Assert.assertEquals("选中高亮应通栏到最右（不能只到节点宽度 " + rowBounds.width + "）",
+                tree.getWidth() - 1, last);
+    }
+
+    private static JTree findTree(Container c) {
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof JTree) return (JTree) ch;
+            if (ch instanceof Container) {
+                JTree t = findTree((Container) ch);
+                if (t != null) return t;
+            }
+        }
+        return null;
+    }
+
+    private static void forceLayout(Container c) {
+        c.doLayout();
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof Container) forceLayout((Container) ch);
+        }
     }
 
     @Test

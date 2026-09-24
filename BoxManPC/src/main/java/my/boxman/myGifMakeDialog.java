@@ -1,5 +1,7 @@
 package my.boxman;
 
+import my.boxman.compat.HoloAlertDialog;
+import my.boxman.compat.HoloContent;
 import my.boxman.gifencoder.GifEncoder;
 
 import javax.swing.*;
@@ -13,9 +15,19 @@ import java.util.List;
 
 /**
  * GIF Animation Generator Dialog for BoxMan PC (Swing Port).
- * 1:1 functional equivalent of Android's myGifMakeFragment.
+ *
+ * <p>外壳用 {@link HoloAlertDialog}。标题按原版 {@code myExport.java:371} 的
+ * {@code setTitle("帧间隔")} 取 <b>「帧间隔」</b>，按钮 取消 / 确定。
+ *
+ * <p>内容按原版 {@code res/layout/gif_set_dialog.xml} 的分组还原：
+ * 「12dp {@code #363636} 条 → 一行『其它：』+ 两个复选框 → 12dp 条
+ * → 一行『水印：』+ 无/默认/自定义 单选 → 12dp 条」，另外原版用
+ * {@code setSingleChoiceItems({"自动","100",...})} 选帧间隔，这里用下拉框等价实现。
+ *
+ * <p>已知差异：原版第一个复选框是「仅关键帧」（勾选 = 只记关键帧），
+ * PC 版是「逐移」（勾选 = 每步都记），语义相反，故保留 PC 文案不强行改字。
  */
-public class myGifMakeDialog extends JDialog {
+public class myGifMakeDialog extends HoloAlertDialog {
 
     public JComboBox<String> cbInterval;
     public JCheckBox chkMoveByMove;
@@ -25,84 +37,111 @@ public class myGifMakeDialog extends JDialog {
     public JTextArea logArea;
     public JButton btMake, btCancel;
 
-    private String mAns;
-    private int mGifStart;
-    private boolean[] myRule;
-    private short[] myBoxNum;
+    private final String mAns;
+    private final int mGifStart;
+    private final boolean[] myRule;
+    private final short[] myBoxNum;
     private GifWorker worker;
 
     public myGifMakeDialog(Frame parent, String lurd, int gifStart, boolean[] rule, short[] boxNum) {
-        super(parent, "导出解法为动画 (GIF)", true);
+        super(parent, "帧间隔");
         this.mAns = lurd != null ? lurd.replaceAll("[^lurdLURD]", "") : "";
         this.mGifStart = gifStart;
         this.myRule = rule;
         this.myBoxNum = boxNum;
-
-        setSize(540, 420);
-        setLocationRelativeTo(parent);
         initUI();
     }
 
     private void initUI() {
-        setLayout(new BorderLayout(8, 8));
-
-        JPanel configPanel = new JPanel(new GridLayout(4, 2, 8, 8));
-        configPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
-
-        configPanel.add(new JLabel("帧间隔 (毫秒):"));
+        // 原版帧间隔是一个单选列表 {"自动","100","200","300","500","1000","2000"}
         cbInterval = new JComboBox<>(new String[]{"300", "100", "200", "500", "1000", "2000"});
         cbInterval.setSelectedIndex(0);
-        configPanel.add(cbInterval);
+        cbInterval.setFont(HoloContent.font(Font.PLAIN));
+        cbInterval.setBackground(HoloContent.FIELD_BG);
+        cbInterval.setForeground(HoloContent.TEXT);
+        cbInterval.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                          boolean isSelected, boolean cellHasFocus) {
+                Component c = super.getListCellRendererComponent(
+                        list, value, index, isSelected, cellHasFocus);
+                c.setBackground(isSelected ? HoloContent.LIST_SELECTED : HoloContent.FIELD_BG);
+                c.setForeground(HoloContent.TEXT);
+                setFont(HoloContent.font(Font.PLAIN));
+                return c;
+            }
+        });
+        Dimension comboSize = new Dimension(120, 28);
+        cbInterval.setPreferredSize(comboSize);
+        cbInterval.setMinimumSize(comboSize);
+        cbInterval.setMaximumSize(comboSize);
 
-        configPanel.add(new JLabel("逐步模式:"));
-        chkMoveByMove = new JCheckBox("逐移 (否则仅记录推箱步骤)", true);
-        configPanel.add(chkMoveByMove);
+        chkMoveByMove = HoloContent.check("逐移 (否则仅记录推箱步骤)", true);
+        chkSkin = HoloContent.check("现场皮肤", false);
 
-        configPanel.add(new JLabel("皮肤设置:"));
-        chkSkin = new JCheckBox("使用现场皮肤", false);
-        configPanel.add(chkSkin);
-
-        configPanel.add(new JLabel("水印:"));
-        JPanel markPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        rbMarkNone = new JRadioButton("无");
-        rbMarkDefault = new JRadioButton("默认", true);
-        rbMarkCustom = new JRadioButton("自定义");
+        rbMarkNone = HoloContent.radio("无", false);
+        rbMarkDefault = HoloContent.radio("默认", true);
+        rbMarkCustom = HoloContent.radio("自定义", false);
         ButtonGroup bg = new ButtonGroup();
         bg.add(rbMarkNone);
         bg.add(rbMarkDefault);
         bg.add(rbMarkCustom);
-        markPanel.add(rbMarkNone);
-        markPanel.add(rbMarkDefault);
-        markPanel.add(rbMarkCustom);
-        configPanel.add(markPanel);
 
-        add(configPanel, BorderLayout.NORTH);
+        JPanel radios = new JPanel();
+        radios.setLayout(new BoxLayout(radios, BoxLayout.X_AXIS));
+        radios.setOpaque(false);
+        radios.add(rbMarkNone);
+        radios.add(rbMarkDefault);
+        radios.add(rbMarkCustom);
 
-        JPanel centerPanel = new JPanel(new BorderLayout(4, 4));
-        centerPanel.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
         progressBar = new JProgressBar(0, 100);
         progressBar.setStringPainted(true);
-        centerPanel.add(progressBar, BorderLayout.NORTH);
+        progressBar.setFont(HoloContent.font(Font.PLAIN));
+        progressBar.setBackground(HoloContent.FIELD_BG);
+        progressBar.setForeground(HoloContent.HOLO_BLUE);
+        progressBar.setBorderPainted(false);
+        Dimension barSize = new Dimension(288, 24);
+        progressBar.setPreferredSize(barSize);
+        progressBar.setMinimumSize(barSize);
+        progressBar.setMaximumSize(barSize);
 
         logArea = new JTextArea();
         logArea.setEditable(false);
         logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        centerPanel.add(new JScrollPane(logArea), BorderLayout.CENTER);
-        add(centerPanel, BorderLayout.CENTER);
+        logArea.setBackground(HoloContent.FIELD_BG);
+        logArea.setForeground(HoloContent.TEXT);
+        logArea.setCaretColor(HoloContent.TEXT);
+        logArea.setBorder(new javax.swing.border.EmptyBorder(
+                HoloContent.FIELD_PAD, HoloContent.FIELD_PAD,
+                HoloContent.FIELD_PAD, HoloContent.FIELD_PAD));
+        JScrollPane logScroll = HoloContent.scroll(logArea);
+        logScroll.getViewport().setBackground(HoloContent.FIELD_BG);
+        Dimension logSize = new Dimension(288, 160);
+        logScroll.setPreferredSize(logSize);
+        logScroll.setMinimumSize(logSize);
+        logScroll.setMaximumSize(logSize);
+        logScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
-        btMake = new JButton("开始制作");
-        btMake.addActionListener(e -> startMake());
-        btCancel = new JButton("取消");
-        btCancel.addActionListener(e -> {
+        setContentView(HoloContent.column(
+                HoloContent.band(HoloContent.BAND, 12),
+                HoloContent.row(HoloContent.label("其它："), chkMoveByMove,
+                        HoloContent.gap(0), chkSkin),
+                HoloContent.band(HoloContent.BAND, 12),
+                HoloContent.row(HoloContent.label("水印："), radios),
+                HoloContent.band(HoloContent.BAND, 12),
+                HoloContent.row(HoloContent.label("帧间隔:"), cbInterval),
+                HoloContent.row(progressBar),
+                HoloContent.gap(6),
+                logScroll));
+
+        btCancel = addButton("取消", () -> {
             if (worker != null && !worker.isDone()) {
                 worker.cancel(true);
             }
             dispose();
         });
-        bottomBar.add(btMake);
-        bottomBar.add(btCancel);
-        add(bottomBar, BorderLayout.SOUTH);
+        btMake = addButton("确定", this::startMake);
+        setDefaultButton(btMake);
     }
 
     public void startMake() {

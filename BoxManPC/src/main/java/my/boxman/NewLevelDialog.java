@@ -1,13 +1,23 @@
 package my.boxman;
 
+import my.boxman.compat.HoloAlertDialog;
+import my.boxman.compat.HoloContent;
+
 import javax.swing.*;
 import java.awt.*;
 
 /**
  * Create New Level Dialog for BoxMan PC (Swing Port).
- * 1:1 functional equivalent of Android's new_level_dialog.xml.
+ *
+ * <p>外壳用 {@link HoloAlertDialog}。标题按原版 {@code myGridView.java:455} 的
+ * {@code setTitle("关卡尺寸")} 取 <b>「关卡尺寸」</b>，按钮 取消 / 确定。
+ *
+ * <p>原版 {@code res/layout/new_level_dialog.xml} 只有「列 × 行」两个 100dp 数字框
+ * （居中一行，底 {@code #363636}，输入框 {@code #242424}，16sp）。PC 版额外加了
+ * 关卡标题 / 作者姓名两个输入框（原版没有），这里<b>保留</b>以免改变功能，
+ * 仅统一到 Holo 深色配色并把输入框排成原版那样的居中行。
  */
-public class NewLevelDialog extends JDialog {
+public class NewLevelDialog extends HoloAlertDialog {
 
     public interface NewLevelListener {
         void onNewLevel(String title, String author, int rows, int cols);
@@ -19,60 +29,34 @@ public class NewLevelDialog extends JDialog {
     public JSpinner spCols;
     public JButton btOK, btCancel;
 
-    private NewLevelListener listener;
+    private final NewLevelListener listener;
 
     public NewLevelDialog(Frame parent, NewLevelListener listener) {
-        super(parent, "新建关卡", true);
+        super(parent, "关卡尺寸");
         this.listener = listener;
-
-        setSize(380, 260);
-        setLocationRelativeTo(parent);
         initUI();
     }
 
     private void initUI() {
-        setLayout(new BorderLayout(8, 8));
+        tfTitle = HoloContent.field(160, "新关卡");
+        tfAuthor = HoloContent.field(160, "PC作者");
+        spRows = HoloContent.spinner(80, 15, 3, 50);
+        spCols = HoloContent.spinner(80, 15, 3, 50);
 
-        JPanel form = new JPanel(new GridLayout(4, 2, 8, 8));
-        form.setBorder(BorderFactory.createEmptyBorder(12, 12, 8, 12));
+        setContentView(HoloContent.column(
+                HoloContent.row(HoloContent.label("关卡标题:"), tfTitle),
+                HoloContent.row(HoloContent.label("作者姓名:"), tfAuthor),
+                HoloContent.row(HoloContent.label("初始列数 (3~50):"), spCols),
+                HoloContent.row(HoloContent.label("初始行数 (3~50):"), spRows)));
 
-        form.add(new JLabel("关卡标题:"));
-        tfTitle = new JTextField("新关卡");
-        form.add(tfTitle);
-
-        form.add(new JLabel("作者姓名:"));
-        tfAuthor = new JTextField("PC作者");
-        form.add(tfAuthor);
-
-        form.add(new JLabel("初始行数 (3~50):"));
-        spRows = new JSpinner(new SpinnerNumberModel(15, 3, 50, 1));
-        form.add(spRows);
-
-        form.add(new JLabel("初始列数 (3~50):"));
-        spCols = new JSpinner(new SpinnerNumberModel(15, 3, 50, 1));
-        form.add(spCols);
-
-        add(form, BorderLayout.CENTER);
-
-        JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 8));
-        btOK = new JButton("确定");
-        btOK.addActionListener(e -> {
-            String title = tfTitle.getText().trim();
-            String author = tfAuthor.getText().trim();
-            int rows = (Integer) spRows.getValue();
-            int cols = (Integer) spCols.getValue();
-
+        btCancel = addButton("取消", this::dispose);
+        btOK = addButton("确定", () -> {
             if (listener != null) {
-                listener.onNewLevel(title, author, rows, cols);
+                listener.onNewLevel(tfTitle.getText().trim(), tfAuthor.getText().trim(),
+                        (Integer) spRows.getValue(), (Integer) spCols.getValue());
             }
             dispose();
         });
-
-        btCancel = new JButton("取消");
-        btCancel.addActionListener(e -> dispose());
-
-        bottomBar.add(btOK);
-        bottomBar.add(btCancel);
-        add(bottomBar, BorderLayout.SOUTH);
+        setDefaultButton(btOK);
     }
 }

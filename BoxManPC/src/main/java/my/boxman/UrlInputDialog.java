@@ -1,5 +1,8 @@
 package my.boxman;
 
+import my.boxman.compat.HoloAlertDialog;
+import my.boxman.compat.HoloContent;
+
 import javax.swing.*;
 import java.awt.*;
 import java.io.BufferedReader;
@@ -9,9 +12,15 @@ import java.net.URL;
 
 /**
  * Web Level URL Input and Download Dialog for BoxMan PC (Swing Port).
- * 1:1 functional equivalent of Android's get_uil_dialog.xml.
+ *
+ * <p>外壳用 {@link HoloAlertDialog}。标题按原版 {@code BoxMan.java:1645} 的
+ * {@code setTitle("导入比赛关卡")} 取 <b>「导入比赛关卡」</b>，按钮 取消 / 确定
+ * （PC 原来写的是「下载导入」）。
+ *
+ * <p>原版 {@code res/layout/get_uil_dialog.xml} 是一个 URL 输入框；PC 版额外加了一条
+ * 下载进度条，属于新增功能，这里保留并统一到 Holo 深色配色。
  */
-public class UrlInputDialog extends JDialog {
+public class UrlInputDialog extends HoloAlertDialog {
 
     public interface UrlDownloadListener {
         void onDownloaded(String content);
@@ -21,44 +30,37 @@ public class UrlInputDialog extends JDialog {
     public JButton btDownload, btCancel;
     public JProgressBar progressBar;
 
-    private UrlDownloadListener listener;
+    private final UrlDownloadListener listener;
 
     public UrlInputDialog(Frame parent, UrlDownloadListener listener) {
-        super(parent, "从网络导入关卡", true);
+        super(parent, "导入比赛关卡");
         this.listener = listener;
-
-        setSize(460, 200);
-        setLocationRelativeTo(parent);
         initUI();
     }
 
     private void initUI() {
-        setLayout(new BorderLayout(8, 8));
-
-        JPanel form = new JPanel(new GridLayout(2, 1, 6, 6));
-        form.setBorder(BorderFactory.createEmptyBorder(12, 14, 6, 14));
-
-        form.add(new JLabel("请输入关卡文件的网络 URL 地址 (HTTP / HTTPS):"));
-        tfUrl = new JTextField("http://");
-        form.add(tfUrl);
-        add(form, BorderLayout.NORTH);
+        tfUrl = HoloContent.field(288, "http://");
 
         progressBar = new JProgressBar();
         progressBar.setStringPainted(true);
         progressBar.setString("就绪");
-        JPanel centerPanel = new JPanel(new BorderLayout());
-        centerPanel.setBorder(BorderFactory.createEmptyBorder(0, 14, 0, 14));
-        centerPanel.add(progressBar, BorderLayout.CENTER);
-        add(centerPanel, BorderLayout.CENTER);
+        progressBar.setFont(HoloContent.font(Font.PLAIN));
+        progressBar.setBackground(HoloContent.FIELD_BG);
+        progressBar.setForeground(HoloContent.HOLO_BLUE);
+        progressBar.setBorderPainted(false);
+        Dimension barSize = new Dimension(288, 24);
+        progressBar.setPreferredSize(barSize);
+        progressBar.setMinimumSize(barSize);
+        progressBar.setMaximumSize(barSize);
 
-        JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 8));
-        btDownload = new JButton("下载导入");
-        btDownload.addActionListener(e -> startDownload());
-        btCancel = new JButton("取消");
-        btCancel.addActionListener(e -> dispose());
-        bottomBar.add(btDownload);
-        bottomBar.add(btCancel);
-        add(bottomBar, BorderLayout.SOUTH);
+        setContentView(HoloContent.column(
+                HoloContent.row(HoloContent.label("URL:")),
+                HoloContent.row(tfUrl),
+                HoloContent.row(progressBar)));
+
+        btCancel = addButton("取消", this::dispose);
+        btDownload = addButton("确定", this::startDownload);
+        setDefaultButton(btDownload);
     }
 
     public void startDownload() {
@@ -82,7 +84,8 @@ public class UrlInputDialog extends JDialog {
                 conn.setReadTimeout(6000);
 
                 StringBuilder sb = new StringBuilder();
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"))) {
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(conn.getInputStream(), "UTF-8"))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
                         sb.append(line).append('\n');

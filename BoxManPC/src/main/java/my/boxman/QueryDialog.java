@@ -1,5 +1,8 @@
 package my.boxman;
 
+import my.boxman.compat.HoloAlertDialog;
+import my.boxman.compat.HoloContent;
+
 import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
@@ -7,9 +10,14 @@ import java.util.List;
 
 /**
  * Advanced Level Query Dialog for BoxMan PC (Swing Port).
- * 1:1 functional equivalent of Android's query_dialog & myQueryFragment.
+ *
+ * <p>外壳用 {@link HoloAlertDialog}。标题按原版 {@code BoxMan.java:527} 的
+ * {@code setTitle("关卡查询")} 取 <b>「关卡查询」</b>，按钮 取消 / 确定。
+ *
+ * <p>PC 版的表单项（标题/作者/行数/列数/箱子数/已解）比原版 {@code query_dialog.xml}
+ * 的字段多，功能是原版的超集；这里保留其功能与公开字段，只统一到 Holo 深色外观。
  */
-public class QueryDialog extends JDialog {
+public class QueryDialog extends HoloAlertDialog {
 
     public interface QueryResultListener {
         void onQueryDone(List<mapNode> results);
@@ -23,69 +31,41 @@ public class QueryDialog extends JDialog {
     public JCheckBox chkSolvedOnly;
     public JButton btSearch, btCancel;
 
-    private QueryResultListener listener;
+    private final QueryResultListener listener;
 
     public QueryDialog(Frame parent, QueryResultListener listener) {
-        super(parent, "高级关卡查询 - 推箱快手", true);
+        super(parent, "关卡查询");
         this.listener = listener;
-
-        setSize(480, 360);
-        setLocationRelativeTo(parent);
         initUI();
     }
 
     private void initUI() {
-        setLayout(new BorderLayout(8, 8));
+        tfTitle = HoloContent.field(160, "");
+        tfAuthor = HoloContent.field(160, "");
 
-        JPanel form = new JPanel(new GridLayout(6, 2, 8, 8));
-        form.setBorder(BorderFactory.createEmptyBorder(12, 12, 8, 12));
+        spRowsMin = HoloContent.spinner(72, 0, 0, 100);
+        spRowsMax = HoloContent.spinner(72, 100, 0, 100);
+        spColsMin = HoloContent.spinner(72, 0, 0, 100);
+        spColsMax = HoloContent.spinner(72, 100, 0, 100);
+        spBoxesMin = HoloContent.spinner(72, 0, 0, 100);
+        spBoxesMax = HoloContent.spinner(72, 100, 0, 100);
 
-        form.add(new JLabel("关卡标题 (包含):"));
-        tfTitle = new JTextField();
-        form.add(tfTitle);
+        chkSolvedOnly = HoloContent.check("仅查询已解关卡", false);
 
-        form.add(new JLabel("关卡作者 (包含):"));
-        tfAuthor = new JTextField();
-        form.add(tfAuthor);
+        setContentView(HoloContent.column(
+                HoloContent.row(HoloContent.label("标题:"), tfTitle),
+                HoloContent.row(HoloContent.label("作者:"), tfAuthor),
+                HoloContent.row(HoloContent.label("行数:"),
+                        HoloContent.pair(spRowsMin, HoloContent.label(" ~ "), spRowsMax)),
+                HoloContent.row(HoloContent.label("列数:"),
+                        HoloContent.pair(spColsMin, HoloContent.label(" ~ "), spColsMax)),
+                HoloContent.row(HoloContent.label("箱子:"),
+                        HoloContent.pair(spBoxesMin, HoloContent.label(" ~ "), spBoxesMax)),
+                HoloContent.row(chkSolvedOnly)));
 
-        form.add(new JLabel("行数范围 (最小 ~ 最大):"));
-        JPanel pRows = new JPanel(new GridLayout(1, 2, 4, 0));
-        spRowsMin = new JSpinner(new SpinnerNumberModel(0, 0, 100, 1));
-        spRowsMax = new JSpinner(new SpinnerNumberModel(100, 0, 100, 1));
-        pRows.add(spRowsMin);
-        pRows.add(spRowsMax);
-        form.add(pRows);
-
-        form.add(new JLabel("列数范围 (最小 ~ 最大):"));
-        JPanel pCols = new JPanel(new GridLayout(1, 2, 4, 0));
-        spColsMin = new JSpinner(new SpinnerNumberModel(0, 0, 100, 1));
-        spColsMax = new JSpinner(new SpinnerNumberModel(100, 0, 100, 1));
-        pCols.add(spColsMin);
-        pCols.add(spColsMax);
-        form.add(pCols);
-
-        form.add(new JLabel("箱子数范围 (最小 ~ 最大):"));
-        JPanel pBoxes = new JPanel(new GridLayout(1, 2, 4, 0));
-        spBoxesMin = new JSpinner(new SpinnerNumberModel(0, 0, 100, 1));
-        spBoxesMax = new JSpinner(new SpinnerNumberModel(100, 0, 100, 1));
-        pBoxes.add(spBoxesMin);
-        pBoxes.add(spBoxesMax);
-        form.add(pBoxes);
-
-        form.add(new JLabel("解题状态:"));
-        chkSolvedOnly = new JCheckBox("仅查询已解关卡", false);
-        form.add(chkSolvedOnly);
-
-        add(form, BorderLayout.CENTER);
-
-        JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 8));
-        btSearch = new JButton("查询");
-        btSearch.addActionListener(e -> doSearch());
-        btCancel = new JButton("取消");
-        btCancel.addActionListener(e -> dispose());
-        bottomBar.add(btSearch);
-        bottomBar.add(btCancel);
-        add(bottomBar, BorderLayout.SOUTH);
+        btCancel = addButton("取消", this::dispose);
+        btSearch = addButton("确定", this::doSearch);
+        setDefaultButton(btSearch);
     }
 
     private void doSearch() {
@@ -95,17 +75,17 @@ public class QueryDialog extends JDialog {
         int rMax = (Integer) spRowsMax.getValue();
         int cMin = (Integer) spColsMin.getValue();
         int cMax = (Integer) spColsMax.getValue();
-        int bMin = (Integer) spBoxesMin.getValue();
-        int bMax = (Integer) spBoxesMax.getValue();
         boolean solvedOnly = chkSolvedOnly.isSelected();
 
         List<mapNode> matches = new ArrayList<>();
         if (myMaps.m_lstMaps != null) {
             for (mapNode node : myMaps.m_lstMaps) {
-                if (!titleKey.isEmpty() && (node.Title == null || !node.Title.toLowerCase().contains(titleKey))) {
+                if (!titleKey.isEmpty()
+                        && (node.Title == null || !node.Title.toLowerCase().contains(titleKey))) {
                     continue;
                 }
-                if (!authorKey.isEmpty() && (node.Author == null || !node.Author.toLowerCase().contains(authorKey))) {
+                if (!authorKey.isEmpty()
+                        && (node.Author == null || !node.Author.toLowerCase().contains(authorKey))) {
                     continue;
                 }
                 if (node.Rows < rMin || node.Rows > rMax) continue;
