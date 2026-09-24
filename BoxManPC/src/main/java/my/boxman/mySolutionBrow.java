@@ -18,11 +18,13 @@ public class mySolutionBrow extends JDialog {
 
     public mySolutionBrow(Frame parent) {
         super(parent, "相似关卡答案 - 推箱快手", true);
-        UiWindow.applyPhoneSize(this);
-        setLocationRelativeTo(parent);
 
         initUI();
         loadData();
+
+        // ⚠️ 必须在 UI 全部装好之后再调（见 UiWindow 的说明）
+        UiWindow.applyPhoneSize(this);
+        setLocationRelativeTo(parent);
     }
 
     private void initUI() {

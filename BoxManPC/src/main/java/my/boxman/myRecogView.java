@@ -24,12 +24,15 @@ public class myRecogView extends JFrame {
 
     public myRecogView() {
         setTitle("图像识别 - 推箱快手");
-        UiWindow.applyPhoneSize(this);
-        setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
         initMapData();
         initUI();
+
+        // ⚠️ 必须在 initUI()（内含 setJMenuBar）之后再调：JMenuBar 挂在 rootPane 上、
+        // 位于内容区**之外**，会从内容区里挖走 23px。先 pack 再 setJMenuBar 的话，
+        // 内容区就只剩 370×757，而不是竖屏约定的 370×780。见 UiWindow 的说明。
+        UiWindow.applyPhoneSize(this);
     }
 
     private void initMapData() {

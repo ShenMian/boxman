@@ -21,8 +21,6 @@ public class Help extends JFrame {
     }
 
     private void initUI() {
-        UiWindow.applyPhoneSize(this);
-        setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
         tv_help = new JTextArea();
@@ -318,5 +316,8 @@ public class Help extends JFrame {
         btnClose.addActionListener(e -> dispose());
         bottomPanel.add(btnClose);
         add(bottomPanel, BorderLayout.SOUTH);
+
+        // ⚠️ 必须在 UI 全部装好之后再调（见 UiWindow 的说明）
+        UiWindow.applyPhoneSize(this);
     }
 }

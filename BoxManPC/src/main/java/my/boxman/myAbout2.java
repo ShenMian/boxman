@@ -21,8 +21,6 @@ public class myAbout2 extends JDialog {
     }
 
     private void initUI() {
-        UiWindow.applyPhoneSize(this);
-        setLocationRelativeTo(getOwner());
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 
         JPanel content = new JPanel();
@@ -100,6 +98,10 @@ public class myAbout2 extends JDialog {
         bottom.add(btnSave);
         bottom.add(btnClose);
         add(bottom, BorderLayout.SOUTH);
+
+        // ⚠️ 必须在 UI 全部装好之后再调（见 UiWindow 的说明）
+        UiWindow.applyPhoneSize(this);
+        setLocationRelativeTo(getOwner());
     }
 
     private void saveInfo() {

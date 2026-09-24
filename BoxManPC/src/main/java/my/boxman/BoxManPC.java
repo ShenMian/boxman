@@ -95,8 +95,20 @@ public class BoxManPC extends JFrame {
         }
 
         SwingUtilities.invokeLater(() -> {
-            BoxManPC app = new BoxManPC();
-            app.setVisible(true);
+            try {
+                BoxManPC app = new BoxManPC();
+                app.setVisible(true);
+            } catch (Throwable t) {
+                // 原版 BoxMan.onCreate 在 openDataBase() 失败时会
+                // MyToast + finish + System.exit(0)。PC 端同样不允许「带着坏库继续跑」——
+                // 那会退化成满屏 no such table。这里把原因明确弹给用户。
+                t.printStackTrace();
+                String msg = t.getMessage() == null ? t.toString() : t.getMessage();
+                JOptionPane.showMessageDialog(null,
+                        "关卡库出错，无法继续游戏！\n\n" + msg,
+                        "推箱快手", JOptionPane.ERROR_MESSAGE);
+                System.exit(1);
+            }
         });
     }
 

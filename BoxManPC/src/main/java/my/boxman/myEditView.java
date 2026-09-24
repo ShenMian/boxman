@@ -101,7 +101,6 @@ public class myEditView extends JFrame {
 
     public myEditView() {
         setTitle("关卡编辑器 - 推箱快手");
-        UiWindow.applyPhoneSize(this);
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
             @Override
@@ -111,6 +110,10 @@ public class myEditView extends JFrame {
         });
 
         initUI();
+
+        // ⚠️ 必须在 initUI()（内含 setJMenuBar）之后再调，否则菜单栏会从内容区里
+        // 挖走 23px，内容区变成 370×757。见 UiWindow 的说明。
+        UiWindow.applyPhoneSize(this);
     }
 
     private void initUI() {

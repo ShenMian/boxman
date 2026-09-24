@@ -158,11 +158,14 @@ public class mySubmitList extends JFrame {
      */
     mySubmitList(boolean autoLoad) {
         setTitle("提交列表 - 推箱快手");
-        UiWindow.applyPhoneSize(this);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        setLocationRelativeTo(null);
 
         initUI();
+
+        // ⚠️ 必须在 UI 全部装好之后再调（见 UiWindow 的说明）
+        UiWindow.applyPhoneSize(this);
+
+        // 放最后：reload() 会弹模态进度框，不能挡在定尺寸之前
         if (autoLoad) {
             reload();
         }

@@ -36,6 +36,14 @@ public class WindowSizingTest {
 
     private static void assertPhonePortrait(String name, Window window) {
         try {
+            // ⚠️ 必须先 addNotify() + validate() 再读尺寸。
+            // 只在构造完立刻读的话，JMenuBar 挖走的那 23px 还没体现出来
+            // （pack() 之后内容区就是 370×780），测试会假通过 ——
+            // 曾因此漏掉 myRecogView / myEditView / myFindView / myStateBrow /
+            // myActGMView / myExport 六个窗口内容区实际只有 370×757 的问题。
+            window.addNotify();
+            window.validate();
+
             Container pane = window instanceof javax.swing.JFrame
                     ? ((javax.swing.JFrame) window).getContentPane()
                     : ((javax.swing.JDialog) window).getContentPane();
@@ -44,7 +52,8 @@ public class WindowSizingTest {
             Assert.assertEquals(name + " 内容区宽度应为 " + UiWindow.PHONE_WIDTH
                     + "（原版竖屏），实际 " + w + "x" + h, UiWindow.PHONE_WIDTH, w);
             Assert.assertEquals(name + " 内容区高度应为 " + UiWindow.PHONE_HEIGHT
-                    + "（原版竖屏），实际 " + w + "x" + h, UiWindow.PHONE_HEIGHT, h);
+                    + "（原版竖屏），实际 " + w + "x" + h + "；差值常见于 setJMenuBar 在"
+                    + " applyPhoneSize 之后调用（菜单栏挖走 23px）", UiWindow.PHONE_HEIGHT, h);
             Assert.assertTrue(name + " 应为竖屏（高 > 宽），实际 " + w + "x" + h, h > w);
         } finally {
             window.dispose();
@@ -97,5 +106,6 @@ public class WindowSizingTest {
 
         // autoLoad=false：只建界面，不发网络请求
         assertPhonePortrait("mySubmitList", new mySubmitList(false));
+        assertPhonePortrait("mySubmit", new mySubmit());
     }
 }

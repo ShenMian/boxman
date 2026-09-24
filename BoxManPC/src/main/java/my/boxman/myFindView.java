@@ -30,11 +30,13 @@ public class myFindView extends JFrame {
 
     public myFindView() {
         setTitle("相似关卡对比 - 推箱快手");
-        UiWindow.applyPhoneSize(this);
-        setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
         initUI();
+
+        // ⚠️ 必须在 initUI()（内含 setJMenuBar）之后再调，否则菜单栏会从内容区里
+        // 挖走 23px，内容区变成 370×757。见 UiWindow 的说明。
+        UiWindow.applyPhoneSize(this);
     }
 
     private void initUI() {

@@ -18,7 +18,22 @@ public class mySQLite {
 
 	//将数据库写到指定目录中
 	public static mySQLite m_SQL;
-	private static String DATABASE_PATH = (myMaps.sRoot == null ? System.getProperty("user.home") + "/.boxman/" : myMaps.sRoot + myMaps.sPath) + "DataBase/";  //数据库路径
+	private static String DATABASE_PATH = resolveDataBasePath();  //数据库路径
+
+	/**
+	 * 解析数据库目录。
+	 *
+	 * <p>{@code myMaps.sPath} 原版在 {@code BoxMan.onCreate()} 里赋值，PC 端在
+	 * {@code BoxManPC.initAppEnvironment()} 里赋值。两者都可能为 null（例如单元测试只设 sRoot），
+	 * 拼字符串会得到 {@code ...nullDataBase/} 这种带字面量 "null" 的目录名，因此这里统一兜底为 "/"。
+	 */
+	private static String resolveDataBasePath() {
+		String root = myMaps.sRoot == null
+				? System.getProperty("user.home") + "/.boxman/"
+				: myMaps.sRoot;
+		String path = myMaps.sPath == null ? "/" : myMaps.sPath;
+		return root + path + "DataBase/";
+	}
 	private static final String dbName = "BoxMan.db";  //数据库的名称
 	public SQLiteDatabase mSDB;
 	private String my_ANS; //导入答案需要把动作做大小写转换，借用一个全局变量
@@ -38,7 +53,7 @@ public class mySQLite {
 
 	//初试化数据库
 	private static void initDataBase() {
-		DATABASE_PATH = (myMaps.sRoot == null ? System.getProperty("user.home") + "/.boxman/" : myMaps.sRoot + myMaps.sPath) + "DataBase/";
+		DATABASE_PATH = resolveDataBasePath();
 		boolean dbExist = checkDataBase();
 		if (!dbExist) {
 			copyDataBase();
@@ -49,54 +64,98 @@ public class mySQLite {
 	private static void copyDataBase() {
 		String databaseFilenames = DATABASE_PATH + dbName;
 		File dir = new File(DATABASE_PATH);
+		File target = new File(databaseFilenames);
+		File tmp = new File(databaseFilenames + ".tmp");
 		FileOutputStream os = null;
 		InputStream is = null;
 
 		// 判断文件夹是否存在，不存在就创建一个
-		if (!dir.exists()) {
-			dir.mkdirs();
+		if (!dir.exists() && !dir.mkdirs() && !dir.exists()) {
+			throw new IllegalStateException("无法创建关卡库目录：" + DATABASE_PATH);
 		}
 		try {
-			// 得到数据库的输出流
-			os = new FileOutputStream(databaseFilenames);
 			// 得到数据文件的输入流（从 classpath 资源获取）
 			is = mySQLite.class.getResourceAsStream("/assets/" + dbName);
 			if (is == null) {
 				is = mySQLite.class.getResourceAsStream("/assets/BoxMan.db");
 			}
+			// ⚠️ 这里绝不能静默返回：旧实现用 `while (is != null && ...)`，资源取不到时循环不执行，
+			// 但 FileOutputStream 已经把文件建出来了 → 留下一个 0 字节 BoxMan.db。
+			// 而 0 字节的 sqlite 文件是「合法可打开」的，checkDataBase() 会据此判定「库已存在」，
+			// 于是之后再也不会重新复制，所有 SQL 永久报 no such table 且无法自愈。
+			if (is == null) {
+				throw new IllegalStateException(
+						"关卡库资源 /assets/" + dbName + " 不在 classpath 中。"
+								+ "运行时/测试时请把 src/main/resources（或 build/resources/main）加入 classpath。");
+			}
+
+			// 先写临时文件，校验通过后再改名，避免留下半成品
+			os = new FileOutputStream(tmp);
 			byte[] buffer = new byte[8192];
 			int count;
-			while (is != null && (count = is.read(buffer)) != -1) {
+			long total = 0;
+			while ((count = is.read(buffer)) != -1) {
 				os.write(buffer, 0, count);
-				os.flush();
+				total += count;
 			}
-		} catch (Exception e) {
-			e.printStackTrace();
+			os.flush();
+			os.close();
+			os = null;
+
+			if (total <= 0) {
+				throw new IllegalStateException("关卡库资源为空：" + dbName);
+			}
+			if (target.exists() && !target.delete()) {
+				throw new IllegalStateException("无法覆盖已损坏的关卡库：" + databaseFilenames);
+			}
+			if (!tmp.renameTo(target)) {
+				throw new IllegalStateException("无法写入关卡库：" + databaseFilenames);
+			}
+		} catch (IOException e) {
+			throw new IllegalStateException("复制关卡库失败：" + databaseFilenames, e);
 		} finally {
 			try {
 				if (os != null) os.close();
+			} catch (IOException ignored) { }
+			try {
 				if (is != null) is.close();
-			} catch (IOException e) { }
+			} catch (IOException ignored) { }
+			if (tmp.exists() && !tmp.delete()) {
+				tmp.deleteOnExit();  // 失败时清掉半成品，别留下能被误判为「库已存在」的文件
+			}
 		}
 	}
 
-	//判断数据库是否存在
+	//判断数据库是否存在且可用
 	private static boolean checkDataBase() {
-		SQLiteDatabase checkDB = null;
 		String databaseFilename = DATABASE_PATH + dbName;
-		// 要自己加上try catch方法
+		File f = new File(databaseFilename);
+
+		// 0 字节文件是「上次复制中断」留下的半成品：sqlite 能打开它，但里面一张表都没有。
+		// 必须判为「不存在」，否则永远走不到 copyDataBase()，库永远修不回来。
+		if (!f.isFile() || f.length() == 0) {
+			return false;
+		}
+
+		SQLiteDatabase checkDB = null;
+		boolean ok = false;
 		try {
 			// 返回最新的数据库
 			checkDB = SQLiteDatabase.openDatabase(databaseFilename, null, SQLiteDatabase.OPEN_READONLY);
+			// 光能打开不够，还要确认真的有表（空库能打开但用不了）
+			Cursor c = checkDB.rawQuery("SELECT count(*) FROM sqlite_master WHERE type='table'", null);
+			ok = c != null && c.moveToFirst() && c.getInt(0) > 0;
+			if (c != null) c.close();
 		} catch (SQLiteException e) {
-			// TODO: handle exception
+			ok = false;
+		} catch (Exception e) {
+			ok = false;
+		} finally {
+			if (checkDB != null) {
+				checkDB.close();
+			}
 		}
-
-		if (checkDB != null) {
-			checkDB.close();
-		}
-		// 如果checkDB为null，则没有数据库，返回false
-		return checkDB == null ? false : true;
+		return ok;
 	}
 
 	//删除临时表

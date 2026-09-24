@@ -199,17 +199,32 @@ public class myGameView extends JFrame {
     public myGameView() {
         setTitle("推箱快手");
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-        UiWindow.applyPhoneSize(this);
-        setLocationRelativeTo(null);
 
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
                 handleExit();
             }
+
+            /**
+             * 原版 {@code myGameView.onStart()}：从「关卡状态与答案」窗口回来时，
+             * 如果那边置了 {@code m_StateIsRedy}，就把选中的状态/答案载入进来。
+             * PC 端用「窗口重新获得焦点」等价替代 Activity 的 onStart()。
+             */
+            @Override
+            public void windowActivated(WindowEvent e) {
+                if (myMaps.m_StateIsRedy) {
+                    OpenState();  //处理打开的状态
+                }
+            }
         });
 
         initUI();
+
+        // ⚠️ 必须在 UI 装好之后、initGame() 之前调：initGame() 里按地图控件的实际尺寸
+        // 装载关卡，窗口没 pack 过的话地图尺寸为 0，舞台区就画不出来。
+        UiWindow.applyPhoneSize(this);
+
         initTimers();
         initGame();
     }
@@ -2074,6 +2089,75 @@ public class myGameView extends JFrame {
         m_bACT_ERROR = false;
         myMaps.isMacroDebug = false;
         mMap.m_lShowAnsInf = false;
+    }
+
+    /**
+     * 处理「打开状态」——原版 {@code myGameView.OpenState()}（由 {@code onStart()} 里
+     * {@code if (myMaps.m_StateIsRedy) OpenState();} 触发）。
+     *
+     * <p>入口在 {@code myStateBrow} 的上下文菜单「打开」：它把选中的状态读进
+     * {@code myMaps.m_State} 并置 {@code m_StateIsRedy = true}，然后关闭自己，
+     * 回到已经开着的游戏窗口。原版靠 Activity 的 {@code onStart()} 感知「回来了」；
+     * PC 端没有 Activity 生命周期，改用窗口重新获得焦点（{@code windowActivated}）等价触发，
+     * 见构造器里安装的 {@link WindowAdapter}。
+     *
+     * <p>注意 {@code solution == 0} 表示「答案」（停在开始位置），
+     * 否则是「状态」（停在结束位置）——两者处理不同，不要合并。
+     */
+    private void OpenState() {
+        m_nLastSteps = -1;
+        myMaps.m_StateIsRedy = false;
+        try {
+            levelReset(false);  //正推复位
+            myMaps.m_Sets[13] = 0;  //求解后，关闭“互动双推”模式
+
+            int len = myMaps.m_State.ans.length();
+            if (len > 0) {
+                formatPath(myMaps.m_State.ans, false);
+                if (myMaps.m_State.time.toLowerCase().indexOf("yass") >= 0) {
+                    m_imPort_YASS = "[YASS]";
+                } else if (myMaps.m_State.time.toLowerCase().indexOf("导入") >= 0) {
+                    m_imPort_YASS = "[导入]";
+                } else {
+                    m_imPort_YASS = "";
+                }
+                if (myMaps.m_State.solution == 0) {  //答案，停在开始位置；状态，停在结束位置
+                    len = m_lstMovReDo.size();
+                    for (int k = 0; k < len; k++) reDo1();
+                    m_bBusing = false;
+                } else
+                    MyToast.showToast(this, "答案加载成功！", MyToast.LENGTH_SHORT);
+            }
+
+            len = myMaps.m_State.bk_ans.length();
+            if (len > 0) {
+                try {
+                    levelReset(true);  //逆推复位
+                    try {
+                        if (bk_cArray[m_nRow2][m_nCol2] == '@') bk_cArray[m_nRow2][m_nCol2] = '-';
+                        else if (bk_cArray[m_nRow2][m_nCol2] == '+') bk_cArray[m_nRow2][m_nCol2] = '.';
+                    } catch (ArrayIndexOutOfBoundsException ex) { }
+                    m_nRow0 = myMaps.m_State.r;
+                    m_nCol0 = myMaps.m_State.c;
+                    m_nRow2 = m_nRow0;
+                    m_nCol2 = m_nCol0;
+                    bk_cArray[m_nRow2][m_nCol2] = (bk_cArray[m_nRow2][m_nCol2] == '-' ? '@' : '+');
+                    formatPath(myMaps.m_State.bk_ans, true);
+                    len = m_lstMovReDo2.size();
+                    for (int k = 0; k < len; k++) reDo2();
+                    m_bBusing = false;
+                } catch (ArrayIndexOutOfBoundsException ex) {
+                    m_nRow0 = -1;
+                    m_nCol0 = -1;
+                    m_nRow2 = m_nRow0;
+                    m_nCol2 = m_nCol0;
+                    m_lstMovReDo2.clear();
+                }
+            }
+            bt_BK.setChecked(false);  //强制回到正推界面
+            mMap.repaint();           //原版 mMap.invalidate()
+        } catch (Throwable ex) {
+        }
     }
 
     private boolean isVisited(byte[][] m_Mrk, int mR, int mC) {

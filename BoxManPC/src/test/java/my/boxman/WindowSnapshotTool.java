@@ -67,6 +67,7 @@ public class WindowSnapshotTool {
         windows.put("13-myAbout1", new myAbout1(null, setId, "10/20"));
         windows.put("14-myAbout2", new myAbout2(null, firstLevel));
         windows.put("15-mySubmitList", new mySubmitList(false));
+        windows.put("16-mySubmit", new mySubmit());
 
         File outDir = new File(System.getProperty("user.dir"), "build/ui-snapshot");
         outDir.mkdirs();

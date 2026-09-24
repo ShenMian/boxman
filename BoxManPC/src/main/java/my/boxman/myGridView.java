@@ -99,13 +99,14 @@ public class myGridView extends JFrame {
         myMaps.m_Set_id = setId;
         myMaps.sFile = setTitle != null ? setTitle : "关卡列表";
 
-        UiWindow.applyPhoneSize(this);
-        setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
         initAppEnvironment();
         initUI();
         loadData();
+
+        // ⚠️ 必须在 UI 全部装好之后再调（见 UiWindow 的说明）
+        UiWindow.applyPhoneSize(this);
     }
 
     private void initAppEnvironment() {

@@ -47,7 +47,10 @@ public class myMaps {
 	static int m_nTrun = 0;   //地图旋转角度
 
 	static String sRoot;    //路径根
-	static String sPath;    //根目录
+	// 根目录。原版在 BoxMan.onCreate() 里赋值 "/推箱快手/"；PC 端在 BoxManPC.initAppEnvironment() 里赋值 "/"。
+	// 这里给一个默认值，避免「忘记赋值」时拼出 "...nullDataBase/" 这种带字面量 "null" 的路径
+	// （Phase7 集成测试就踩过：只设了 sRoot，结果数据库落到 build/test_boxman_phase7nullDataBase/）。
+	static String sPath = "/";
 	static String sFile;    //关卡集文档名
 	static String[] myPathList = {  //关卡截图根目录列表
 			"",                         // 默认位置

@@ -39,12 +39,14 @@ public class myStateBrow extends JFrame {
 
     public myStateBrow() {
         setTitle("关卡状态与答案 - 推箱快手");
-        UiWindow.applyPhoneSize(this);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        setLocationRelativeTo(null);
 
         initUI();
         loadData();
+
+        // ⚠️ 必须在 initUI()（内含 setJMenuBar）之后再调，否则菜单栏会从内容区里
+        // 挖走 23px，内容区变成 370×757。见 UiWindow 的说明。
+        UiWindow.applyPhoneSize(this);
     }
 
     private void initUI() {
@@ -143,6 +145,22 @@ public class myStateBrow extends JFrame {
                 }
             });
             popup.add(miDelAll);
+        } else {
+            // 原版 onCreateContextMenu 里，「提交答案」只在答案页签可见
+            // （g_Pos == 0 是状态页签，那里菜单项 10 被 setVisible(false)）。
+            JMenuItem miSubmit = new JMenuItem("提交答案（sokoban.cn）");
+            miSubmit.addActionListener(e -> {
+                state_Node nd = list.getSelectedValue();
+                if (nd == null || mySQLite.m_SQL == null) {
+                    return;
+                }
+                // 原版 case 11（提交答案）：
+                //   myMaps.m_State = mySQLite.m_SQL.load_State(m_Sel_id);
+                //   startActivity(new Intent(this, mySubmit.class));
+                myMaps.m_State = mySQLite.m_SQL.load_State(nd.id);
+                new mySubmit().setVisible(true);
+            });
+            popup.add(miSubmit);
         }
 
         list.setComponentPopupMenu(popup);
@@ -178,7 +196,12 @@ public class myStateBrow extends JFrame {
 
     private void loadSelected(state_Node nd) {
         if (nd != null && mySQLite.m_SQL != null) {
-            mySQLite.m_SQL.load_State(nd.id);
+            // 原版 case 1（打开）：
+            //   myMaps.m_State = mySQLite.m_SQL.load_State(m_Sel_id);
+            //   set_State();            → set_State() 里置 m_StateIsRedy = true
+            // ⚠️ 这里曾经漏掉了赋值，只调用 load_State() 并把返回值丢掉，
+            // 结果「打开状态」永远是坏的：标志位被置起来了，但 m_State 还是旧的。
+            myMaps.m_State = mySQLite.m_SQL.load_State(nd.id);
             myMaps.m_StateIsRedy = true;
             dispose();
         }

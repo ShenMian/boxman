@@ -24,12 +24,13 @@ public class myPicListView extends JFrame {
 
     public myPicListView() {
         setTitle("图片列表 - 推箱快手");
-        UiWindow.applyPhoneSize(this);
-        setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
         initUI();
         loadImagesFromDefaultDir();
+
+        // ⚠️ 必须在 UI 全部装好之后再调（见 UiWindow 的说明）
+        UiWindow.applyPhoneSize(this);
     }
 
     private void initUI() {

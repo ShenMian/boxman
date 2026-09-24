@@ -12,8 +12,6 @@ public class myAbout extends JDialog {
     }
 
     private void initUI() {
-        UiWindow.applyPhoneSize(this);
-        setLocationRelativeTo(getOwner());
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 
         JTextArea tv_help = new JTextArea();
@@ -52,5 +50,9 @@ public class myAbout extends JDialog {
         btnClose.addActionListener(e -> dispose());
         bottomPanel.add(btnClose);
         add(bottomPanel, BorderLayout.SOUTH);
+
+        // ⚠️ 必须在 UI 全部装好之后再调（见 UiWindow 的说明）
+        UiWindow.applyPhoneSize(this);
+        setLocationRelativeTo(getOwner());
     }
 }

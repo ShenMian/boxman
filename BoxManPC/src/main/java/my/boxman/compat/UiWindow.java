@@ -22,6 +22,15 @@ import javax.swing.JFrame;
  * 的文字左边界 138px ≈ 3.4、行距 115.4px / 34dp ≈ 3.39。
  *
  * <p>用法：把原来的 {@code setSize(800, 600)} 换成 {@code UiWindow.applyPhoneSize(this)}。
+ *
+ * <p><b>⚠️ 调用时机：必须放在构造器的最后</b>，即所有 UI（尤其是
+ * {@code setJMenuBar(...)}）都装好之后再调。原因：{@code JMenuBar} 挂在
+ * {@code JRootPane} 上、位于内容区<b>之外</b>，高度约 23px；而本方法是靠
+ * 「先把内容区首选尺寸设成 370×780，再 {@code pack()}」来定尺寸的。
+ * 若先 {@code applyPhoneSize} 再 {@code setJMenuBar}，菜单栏会从已经定好的
+ * 内容区里挖走 23px —— 内容区静默变成 <b>370×757</b>，而且这个偏差要等到
+ * 窗口 {@code addNotify()/validate()} 之后才显现（构造完立刻读尺寸还是 780），
+ * 非常容易漏掉。{@code WindowSizingTest} 已在 {@code validate()} 之后做断言来兜住它。
  */
 public final class UiWindow {
 
@@ -62,6 +71,10 @@ public final class UiWindow {
             window.setSize(w, h);
         }
         window.setLocationRelativeTo(null);
+
+        // 原版 Toast 跟随 Activity 窗口移动/缩放；这里在所有窗口统一的入口上挂一次，
+        // 免得每个窗口各写一遍（见 my.boxman.MyToast）。
+        my.boxman.MyToast.attachTo(window);
     }
 
     private static Container contentPaneOf(Window window) {

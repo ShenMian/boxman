@@ -37,8 +37,6 @@ public class myExport extends JFrame {
 
     public myExport(String xsb, String lurd, String local, String local8, boolean isAns, int gifStart, boolean[] rule, short[] boxNum, String importYass) {
         setTitle("导出 - 推箱快手");
-        UiWindow.applyPhoneSize(this);
-        setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
         this.my_XSB = xsb != null ? xsb : "";
@@ -74,6 +72,10 @@ public class myExport extends JFrame {
         }
 
         initUI();
+
+        // ⚠️ 必须在 initUI()（内含 setJMenuBar）之后再调，否则菜单栏会从内容区里
+        // 挖走 23px，内容区变成 370×757。见 UiWindow 的说明。
+        UiWindow.applyPhoneSize(this);
     }
 
     public myExport() {

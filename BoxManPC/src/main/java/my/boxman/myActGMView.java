@@ -30,9 +30,12 @@ public class myActGMView extends JDialog {
         super(parent, "动作管理", true);
         this.is_BK = isBK;
 
+        initUI();
+
+        // ⚠️ 必须在 initUI()（内含 setJMenuBar）之后再调，否则菜单栏会从内容区里
+        // 挖走 23px，内容区变成 370×757。见 UiWindow 的说明。
         UiWindow.applyPhoneSize(this);
         setLocationRelativeTo(parent);
-        initUI();
     }
 
     private void initUI() {

@@ -158,6 +158,11 @@ public class myActionBar extends JPanel {
         repaint();
     }
 
+    /** 原版 {@code ActionBar.setDisplayHomeAsUpEnabled} 的状态查询（快照/测试用）。 */
+    public boolean isUpEnabled() {
+        return upIndicator.isVisible();
+    }
+
     /** 追加一个可用菜单项（原版 menu.xml 中的 <item>） */
     public void addAction(String title, Runnable action) {
         addAction(title, true, action);
