@@ -372,7 +372,7 @@ public class BoxManPC extends JFrame {
         actionBar.addAction("导入...", this::chooseImportFile);
         actionBar.addAction("导出...", this::showExportDialog);
         actionBar.addAction("最近推过的关卡", this::openRecentLevels);
-        actionBar.addAction("关卡查询", false, myActionBar.NO_OP);
+        actionBar.addAction("关卡查询", this::showQueryDialog);
         actionBar.addAction("新建关卡集...", this::createNewSet);
         actionBar.addAction("创编关卡★", this::openEditor);
         actionBar.addAction("图像识别", this::openRecognition);
@@ -383,6 +383,46 @@ public class BoxManPC extends JFrame {
 
     private void showExportDialog() {
         new ExportDialog(this, message -> JOptionPane.showMessageDialog(this, message, "导出完成", JOptionPane.INFORMATION_MESSAGE)).setVisible(true);
+    }
+
+    /**
+     * 原版 {@code menu_query}：弹「关卡查询」对话框，查询完成后把结果当作一个虚拟关卡集
+     * 进入关卡网格浏览（对应原版 {@code BoxMan.onQueryDone()}）。
+     */
+    private void showQueryDialog() {
+        new QueryDialog(this, this::onQueryDone).setVisible(true);
+    }
+
+    /** 原版 {@code BoxMan.onQueryDone(ArrayList&lt;mapNode&gt;)}。 */
+    private void onQueryDone(java.util.List<mapNode> results) {
+        if (results == null || results.isEmpty()) {
+            MyToast.showToast(this, "没有找到！", MyToast.LENGTH_SHORT);
+            return;
+        }
+        if (myMaps.curJi) {
+            return;
+        }
+        myMaps.curJi = true;
+
+        myMaps.curMap = null;
+        myMaps.m_lstMaps.clear();
+        myMaps.m_Sets[0] = 0;
+        myMaps.m_Sets[1] = 0;
+        myMaps.m_Set_id = -1;
+        myMaps.sFile = "关卡查询";
+        myMaps.m_lstMaps.addAll(results);
+        myMaps.J_Title = myMaps.sFile;
+        myMaps.J_Author = "";
+        myMaps.J_Comment = "";
+
+        myGridView grid = new myGridView(-1, myMaps.sFile);
+        grid.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosed(WindowEvent e) {
+                myMaps.curJi = false;
+            }
+        });
+        grid.setVisible(true);
     }
 
     /** 原版 menu_recent：mySQLite.get_Recent() 后进入关卡网格浏览 */

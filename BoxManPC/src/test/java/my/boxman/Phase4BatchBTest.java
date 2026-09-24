@@ -106,7 +106,8 @@ public class Phase4BatchBTest {
         QueryDialog qDlg = new QueryDialog(null, results -> queryDone[0] = true);
         assertNotNull("QueryDialog should be created", qDlg);
         assertNotNull("tfTitle should exist", qDlg.tfTitle);
-        assertNotNull("spBoxesMin should exist", qDlg.spBoxesMin);
+        assertNotNull("tfBoxes1 should exist", qDlg.tfBoxes1);
+        assertNotNull("关卡集列表 should exist", qDlg.lstSets);
 
         final boolean[] findDone = {false};
         FindDialog fDlg = new FindDialog(null, (results, sim, ignoreBox) -> findDone[0] = true);

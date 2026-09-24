@@ -33,6 +33,11 @@ public class DialogSnapshotTool {
         mySQLite.m_SQL = mySQLite.getInstance();
         mySQLite.m_SQL.openDataBase();
         myMaps.loadSkins();
+        // 「关卡查询」对话框要列出全部关卡集，快照里也得先装填
+        myMaps.mSets0 = mySQLite.m_SQL.get_GroupList(0);
+        myMaps.mSets1 = mySQLite.m_SQL.get_GroupList(1);
+        myMaps.mSets2 = mySQLite.m_SQL.get_GroupList(2);
+        myMaps.mSets3 = mySQLite.m_SQL.get_GroupList(3);
         mySQLite.m_SQL.get_Levels(1);
         if (myMaps.m_lstMaps != null && !myMaps.m_lstMaps.isEmpty()) {
             myMaps.curMap = myMaps.m_lstMaps.get(0);

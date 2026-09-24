@@ -22,17 +22,18 @@ import java.awt.event.KeyEvent;
  *       370dp 屏 → 352dp。</li>
  *   <li>9-patch {@code drawable-xhdpi/dialog_full_holo_dark.9.png}（194×82，density 2.0）实测：
  *       填充 {@code #FF282828}、圆角 ≈2dp、顶边 1px 高光 {@code #FF4B4B4B}；
- *       <b>内容内边距 16px = 8dp</b>（bottom/right 标记 runs 17..176 / 17..64），
- *       填充起点在 18px = 9dp，即投影带占外侧 9dp。</li>
- *   <li>{@code DecorView.updateColorViews()} 会把 windowBackground 的 padding 作为
- *       DecorView 的 padding（{@code DecorView.java} 实测），因此
- *       <b>9-patch 的 8dp 与 {@code parentPanel} 的 8dp 外边距会叠加</b>
- *       → 内容区相对窗口左右各内缩 <b>16dp</b>。</li>
+ *       bottom/right 标记几乎满幅 → 位图本身的内容内边距 ≈0，
+ *       不透明填充从 16px = 8dp 处开始（外侧是 alpha 0→87 的软投影）。</li>
+ *   <li><b>内容内缩 = 16dp（2026-09-24 由原版截图实测校正，旧值 8dp 是错的）</b>：
+ *       窗口 352dp，面板可见填充实测 1086px = 319~320dp → 左右各内缩 16dp；
+ *       内容（表头行 / 标题蓝线 / 按钮栏顶分隔线）横向范围实测 x=86..1172，
+ *       与面板可见边缘重合 → 内容相对面板内缩 0。</li>
  *   <li>{@code layout/alert_dialog_holo.xml}：{@code parentPanel} 左右外边距 8dp、
  *       {@code title_template} minHeight 64dp（{@code alert_dialog_title_height}）
  *       且左右内边距 16dp、{@code titleDivider} 高 2dp、
  *       {@code contentPanel}/{@code customPanel} minHeight 64dp、
- *       {@code buttonPanel} minHeight 48dp（{@code alert_dialog_button_bar_height}）。</li>
+ *       {@code buttonPanel} minHeight 48dp（{@code alert_dialog_button_bar_height}，
+ *       但实测按钮栏 180px = 53dp，见 {@link #BUTTON_BAR_HEIGHT}）。</li>
  *   <li>标题：{@code DialogWindowTitle.Holo → TextAppearance.Holo.DialogWindowTitle}
  *       = 22sp + {@code @color/holo_blue_light} {@code #ff33b5e5}。</li>
  *   <li>标题下 2dp 蓝线：{@code AlertController} 在有标题且有自定义面板时把
@@ -64,15 +65,20 @@ public class HoloAlertDialog extends JDialog {
     /** {@code dialog_min_width_minor = 95%}：竖屏下对话框窗口至少占屏宽的 95% */
     private static final int WIDTH_PERCENT = 95;
 
-    /** 9-patch 声明的内容内边距（实测 16px @ density 2.0） */
-    private static final int PATCH_PADDING = 8;
-    /** 9-patch 外侧的非拉伸投影带（填充起点实测 18px @ density 2.0） */
-    private static final int SHADOW = 9;
+    /**
+     * 面板可见填充相对窗口边缘的内缩量（同时是投影带宽度）。
+     *
+     * <p><b>2026-09-24 用原版截图实测校正</b>（截图 1260px 宽 = 370dp，density 3.405）：
+     * 窗口 = 屏宽 95% = 352dp，面板可见填充 = 1086px = <b>319~320dp</b>，
+     * 即面板左右各内缩 <b>16dp</b>；而内容（表头行 {@code #334455}、标题蓝线、
+     * 按钮栏顶分隔线）横向范围实测 <b>x=86..1172</b>，与面板可见边缘**完全重合**
+     * —— 所以内容相对面板的内缩是 0，不是 8dp。
+     * （旧值 8dp 是把 9-patch 的投影渐变起点当成了内容内边距。）
+     */
+    private static final int SHADOW = 16;
     /** 面板圆角（9-patch 实测） */
     private static final int RADIUS = 2;
 
-    /** {@code parentPanel} 的 layout_marginStart/End */
-    private static final int PARENT_MARGIN = 8;
     /** {@code alert_dialog_title_height} */
     private static final int TITLE_HEIGHT = 64;
     /** {@code title_template} 的 layout_marginStart/End */
@@ -81,20 +87,30 @@ public class HoloAlertDialog extends JDialog {
     private static final int DIVIDER_HEIGHT = 2;
     /** {@code contentPanel} / {@code customPanel} 的 minHeight */
     private static final int CONTENT_MIN_HEIGHT = 64;
-    /** {@code alert_dialog_button_bar_height} */
-    private static final int BUTTON_BAR_HEIGHT = 48;
+    /**
+     * {@code alert_dialog_button_bar_height} 名义值是 48dp，但原版截图实测按钮栏
+     * （按钮栏顶分隔线之下 → 面板底边）为 <b>180px = 53dp</b>，且「取消 / 确定」
+     * 文字墨迹的竖直中心正好落在 53dp 的中线上（若按 48dp 算会偏上 8.5px）。
+     * 故取实测值 53dp。
+     */
+    private static final int BUTTON_BAR_HEIGHT = 53;
     /** {@code Widget.Holo.Button} 的 minWidth */
     private static final int BUTTON_MIN_WIDTH = 64;
     /** {@code Widget.Holo.Button.Borderless} 的 paddingStart/End */
     private static final int BUTTON_PADDING = 4;
+    /** 按钮之间的竖直分隔线宽度（实测 2px ≈ 1dp） */
+    private static final int BUTTON_DIVIDER_WIDTH = 1;
 
     /** {@code TextAppearance.Holo.DialogWindowTitle} */
     private static final int TITLE_TEXT_SIZE = 22;
     /** 布局里按钮显式指定的 textSize */
     private static final int BUTTON_TEXT_SIZE = 14;
 
-    /** 内容区相对窗口左右各内缩的量 = 9-patch padding + {@code parentPanel} 外边距 */
-    public static final int CONTENT_INSET = PATCH_PADDING + PARENT_MARGIN;
+    /**
+     * 内容区相对窗口左右各内缩的量。实测结论：<b>内容边缘 = 面板可见边缘</b>，
+     * 所以它就等于投影带宽度 {@link #SHADOW}。
+     */
+    public static final int CONTENT_INSET = SHADOW;
 
     // ---------------------------------------------------------------- 颜色常量
 
@@ -147,17 +163,16 @@ public class HoloAlertDialog extends JDialog {
         parentPanel = new JPanel();
         parentPanel.setOpaque(false);
         parentPanel.setLayout(new BorderLayout());
-        parentPanel.setBorder(new EmptyBorder(0, PARENT_MARGIN, 0, PARENT_MARGIN));
         if (!dialogTitle.isEmpty()) {
             parentPanel.add(buildTopPanel(), BorderLayout.NORTH);
         }
         parentPanel.add(contentPanel, BorderLayout.CENTER);
         parentPanel.add(buttonBar, BorderLayout.SOUTH);
 
-        // DecorView 会把 windowBackground 的 padding 作为自身 padding
+        // 内容边缘与面板可见边缘重合（实测），所以根容器只留投影带这一层内边距
         JPanel root = new PanelBackground();
         root.setLayout(new BorderLayout());
-        root.setBorder(new EmptyBorder(PATCH_PADDING, PATCH_PADDING, PATCH_PADDING, PATCH_PADDING));
+        root.setBorder(new EmptyBorder(SHADOW, SHADOW, SHADOW, SHADOW));
         root.add(parentPanel, BorderLayout.CENTER);
         setContentPane(root);
 
@@ -269,8 +284,26 @@ public class HoloAlertDialog extends JDialog {
                 action.run();
             }
         });
+        if (buttonBar.getComponentCount() > 0) {
+            // Widget.Holo.ButtonBar 的 showDividers="middle" + dividerHorizontal：
+            // 实测按钮之间的竖直分隔线 x=628..629（2px），颜色同顶部分隔线，
+            // 通栏贯穿整个按钮栏高度。
+            buttonBar.add(buttonDivider());
+        }
         buttonBar.add(b);
         return b;
+    }
+
+    /** 按钮之间的竖直分隔线（通栏 1px，白 15%）。 */
+    private static JComponent buttonDivider() {
+        JPanel p = new JPanel();
+        p.setBackground(BAR_DIVIDER);
+        p.setOpaque(true);
+        Dimension d = new Dimension(BUTTON_DIVIDER_WIDTH, 0);
+        p.setPreferredSize(d);
+        p.setMinimumSize(d);
+        p.setMaximumSize(new Dimension(BUTTON_DIVIDER_WIDTH, Integer.MAX_VALUE));
+        return p;
     }
 
     /**
@@ -300,11 +333,14 @@ public class HoloAlertDialog extends JDialog {
     private void distributeButtonWidths() {
         java.util.List<JButton> buttons = new java.util.ArrayList<>();
         int naturalSum = 0;
+        int dividerSum = 0;
         for (Component c : buttonBar.getComponents()) {
             if (c instanceof JButton) {
                 JButton b = (JButton) c;
                 buttons.add(b);
                 naturalSum += Math.max(BUTTON_MIN_WIDTH, b.getPreferredSize().width);
+            } else {
+                dividerSum += BUTTON_DIVIDER_WIDTH;
             }
         }
         int n = buttons.size();
@@ -312,7 +348,7 @@ public class HoloAlertDialog extends JDialog {
             return;
         }
 
-        int barWidth = buttonBarWidth();
+        int barWidth = buttonBarWidth() - dividerSum;
         int remainingExcess = barWidth - naturalSum;
         int remainingWeight = n;
         int assigned = 0;
@@ -351,6 +387,10 @@ public class HoloAlertDialog extends JDialog {
 
     /** 供调用方在 {@code setVisible} 之外主动定尺寸（例如先 pack 再量）。 */
     public void applyHoloSize() {
+        // 原版 AlertController 在没有按钮时不会把 buttonPanel 加进布局（ProgressDialog 就是这种）
+        if (buttonBar.getComponentCount() == 0 && buttonBar.getParent() == parentPanel) {
+            parentPanel.remove(buttonBar);
+        }
         distributeButtonWidths();
         pack();
         int w = windowWidth();

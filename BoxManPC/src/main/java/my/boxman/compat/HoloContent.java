@@ -217,6 +217,113 @@ public final class HoloContent {
         return c;
     }
 
+    // ---------------------------------------------------------------- 原版 CustomCheckboxTheme
+
+    /** {@code query_dialog} 表头行高度：实测 110px @ density 3.405 ≈ 32.3dp */
+    public static final int CHECK_ROW_HEIGHT = 33;
+    /** {@code cb_normal.png} / {@code cb_pressed.png} 的位图尺寸（mdpi，即 32dp×33dp） */
+    private static final int CHECK_ICON = 32;
+
+    /**
+     * 原版 {@code style/CustomCheckboxTheme} 的复选框：{@code android:button=@drawable/checkbox_style}，
+     * 选择器指向 {@code cb_pressed}（已选，绿勾）/ {@code cb_normal}（未选，空框），
+     * 位图 32×33 @ mdpi → <b>32dp 见方</b>，比 Holo 默认的 16dp 方框大一倍。
+     *
+     * <p><b>图标与文字的相对位置照 {@code CompoundButton} 的语义来</b>（别凭直觉写成「图标也缩进 padding」）：
+     * {@code onDraw()} 里 {@code final int left = isLayoutRtl() ? getWidth() - drawableWidth : 0;}
+     * —— 按钮位图是画在控件 <b>x=0</b> 处的，{@code android:padding} <b>不作用于位图</b>；
+     * 而 {@code getCompoundPaddingLeft()} 返回 {@code paddingLeft + drawableWidth}，
+     * 文字才从那里开始。所以 {@code padding=4dp} 的效果是
+     * <b>位图 0..32、文字 36..</b>（中间 4dp 的缝），不是「位图 4..36」。
+     * 实测原版截图印证：答案库框 140..240 → 位图 140..172、文字 176；全选框 240..320 →
+     * 绿勾 240..272、文字 276。故此处 {@code left=0} + {@code iconTextGap=FIELD_PAD}。
+     *
+     * <p>另外高度不计入控件高度（位图由 {@code onDraw} 竖直居中绘制，可略微溢出），
+     * 所以控件高 ≈ 文字行高 + 8dp padding，这里按实测固定为 {@link #CHECK_ROW_HEIGHT}。
+     */
+    public static JCheckBox check32(String text, boolean selected, int widthDp) {
+        JCheckBox c = new JCheckBox(text, selected);
+        c.setFont(font(Font.PLAIN));
+        c.setForeground(TEXT);
+        c.setOpaque(false);
+        c.setFocusPainted(false);
+        c.setBorder(new EmptyBorder(FIELD_PAD, 0, FIELD_PAD, FIELD_PAD));
+        c.setIcon(checkboxIcon(false));
+        c.setSelectedIcon(checkboxIcon(true));
+        c.setIconTextGap(FIELD_PAD);
+        Dimension d = new Dimension(widthDp, CHECK_ROW_HEIGHT);
+        c.setPreferredSize(d);
+        c.setMinimumSize(d);
+        c.setMaximumSize(d);
+        return c;
+    }
+
+    /** {@code cb_normal} / {@code cb_pressed} 位图 → 32dp 图标。 */
+    private static Icon checkboxIcon(boolean checked) {
+        java.awt.image.BufferedImage src =
+                ResourceLoader.getDrawable(checked ? "cb_pressed" : "cb_normal");
+        if (src == null) {
+            return null;
+        }
+        java.awt.image.BufferedImage out = new java.awt.image.BufferedImage(
+                CHECK_ICON, CHECK_ICON, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = out.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.drawImage(src, 0, 0, CHECK_ICON, CHECK_ICON, null);
+        g.dispose();
+        return new ImageIcon(out);
+    }
+
+    // ---------------------------------------------------------------- 原版 ListView 等价物
+
+    /** 列表项高度：实测 73px @ density 3.405 ≈ 21.4dp */
+    public static final int LIST_ITEM_HEIGHT = 21;
+    /** 列表分隔线：原版 {@code android:dividerHeight="4px"}（设备像素）≈ 1dp */
+    public static final int LIST_DIVIDER_HEIGHT = 1;
+
+    /**
+     * 原版 {@code ListView} 的等价物：每项一个 {@code TextView}，
+     * 选中底色 {@code #0088aa}、未选中 {@code #363636}，项间 {@code #000000} 分隔线。
+     */
+    public static JList<String> itemList(String[] items) {
+        JList<String> l = new JList<>(items);
+        l.setFont(font(Font.PLAIN));
+        l.setBackground(BAND);
+        l.setForeground(TEXT);
+        l.setOpaque(true);
+        l.setSelectionBackground(LIST_SELECTED);
+        l.setSelectionForeground(TEXT);
+        l.setFixedCellHeight(LIST_ITEM_HEIGHT + LIST_DIVIDER_HEIGHT);
+        l.setCellRenderer(new ItemRenderer());
+        return l;
+    }
+
+    /** 单项渲染：底色 + 底部 1px 黑线（原版 ListView 的 divider）。 */
+    private static final class ItemRenderer extends JLabel implements ListCellRenderer<String> {
+        ItemRenderer() {
+            setOpaque(true);
+            setFont(HoloContent.font(Font.PLAIN));
+            setBorder(new EmptyBorder(0, 0, LIST_DIVIDER_HEIGHT, 0));
+        }
+
+        @Override
+        public Component getListCellRendererComponent(JList<? extends String> list, String value,
+                                                      int index, boolean isSelected, boolean cellHasFocus) {
+            setText(value == null ? "" : value);
+            setForeground(TEXT);
+            setBackground(isSelected ? LIST_SELECTED : BAND);
+            return this;
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            g.setColor(Color.BLACK);
+            g.fillRect(0, getHeight() - LIST_DIVIDER_HEIGHT, getWidth(), LIST_DIVIDER_HEIGHT);
+        }
+    }
+
     /** 深色主题单选按钮。 */
     public static JRadioButton radio(String text, boolean selected) {
         JRadioButton r = new JRadioButton(text, selected);
@@ -298,6 +405,42 @@ public final class HoloContent {
         sp.setOpaque(true);
         sp.getVerticalScrollBar().setUnitIncrement(TEXT_SIZE);
         return sp;
+    }
+
+    /**
+     * 深色细滚动条：原版 Android 的滚动条是半透明细条，这里用 {@code #006060} 的等价观感，
+     * 与主界面的 {@code DarkScrollBarUI} 保持一致。
+     */
+    public static void darkScrollBar(JScrollPane sp) {
+        JScrollBar bar = sp.getVerticalScrollBar();
+        bar.setUI(new javax.swing.plaf.basic.BasicScrollBarUI() {
+            @Override
+            protected void configureScrollBarColors() {
+                this.thumbColor = new Color(0x00, 0x60, 0x60);
+                this.trackColor = BAND;
+            }
+
+            @Override
+            protected JButton createDecreaseButton(int orientation) {
+                return zeroButton();
+            }
+
+            @Override
+            protected JButton createIncreaseButton(int orientation) {
+                return zeroButton();
+            }
+
+            private JButton zeroButton() {
+                JButton b = new JButton();
+                Dimension zero = new Dimension(0, 0);
+                b.setPreferredSize(zero);
+                b.setMinimumSize(zero);
+                b.setMaximumSize(zero);
+                return b;
+            }
+        });
+        bar.setPreferredSize(new Dimension(6, 0));
+        bar.setOpaque(true);
     }
 
     /**
