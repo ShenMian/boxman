@@ -180,8 +180,8 @@ public class Phase7SystemIntegrationTest {
         // 3. Similar level comparison view
         myFindView findView = new myFindView();
         assertNotNull("myFindView initialized", findView);
-        findView.switchLevel();
-        assertFalse("Toggled level should be false", findView.m_Level);
+        findView.myLevel();
+        assertTrue("Toggled level should be source", findView.m_Level);
 
         // 4. Image recognition view
         myRecogView recogView = new myRecogView();

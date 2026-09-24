@@ -50,29 +50,25 @@ public class Phase4BatchBTest {
         assertNotNull("myFindView should be created", findView);
         assertNotNull("mMap canvas should be initialized", findView.mMap);
 
-        char[][] src = new char[][]{
-                {'#', '#', '#'},
-                {'#', '@', '#'},
-                {'#', '#', '#'}
-        };
-        char[][] sim = new char[][]{
-                {'#', '#', '#', '#'},
-                {'#', '@', '$', '#'},
-                {'#', '#', '.', '#'},
-                {'#', '#', '#', '#'}
-        };
+        // 阶段 D-2 起 myFindView 按原版语义工作：默认显示「相似关卡」（m_Level = false），
+        // 关卡数据走 myMaps.oldMap / curMap 注入（loadForTest 内部即 getLevel_inf()）。
+        mapNode src = new mapNode(-1L, -1L, 3, 5, "#####\n#@$.#\n#####", "源", "", "",
+                "#####\n#@$.#\n#####");
+        mapNode sim = new mapNode(-2L, -1L, 5, 3, "###\n#@#\n#$#\n#.#\n###", "似", "", "",
+                "###\n#@#\n#$#\n#.#\n###");
+        findView.loadForTest(src, sim);
 
-        findView.setLevels(src, 3, 3, sim, 4, 4);
-        assertTrue("Default should show source level", findView.m_Level);
+        assertFalse("原版默认显示相似关卡", findView.m_Level);
+        assertEquals("相似关卡正是源关卡转 90°", 100, findView.mSimilarity);
 
-        findView.switchLevel();
-        assertFalse("Should toggle to similar level", findView.m_Level);
+        findView.myLevel();
+        assertTrue("myLevel() 切到源关卡", findView.m_Level);
 
-        findView.rotateLevel();
-        assertEquals("Should rotate to 1", 1, findView.mTrun);
+        findView.myTrun();
+        assertEquals("myTrun() 在 0/1 转之间循环", 1, myMaps.m_nTrun);
 
-        findView.toggleViewMode();
-        assertTrue("Should toggle to full view mode", findView.m_Level_All);
+        findView.toggleLevelAll();
+        assertTrue("toggleLevelAll() 切到关卡全貌", findView.mMap.m_Level_All);
     }
 
     @Test

@@ -12,6 +12,15 @@ import my.boxman.compat.UiWindow;
 /**
  * Level Export Frame for BoxMan PC (Swing Port).
  * 1:1 functional equivalent of Android's myExport Activity.
+ *
+ * <p><b>ActionBar</b>：原版 {@code setTitle("导出")} + {@code setDisplayHomeAsUpEnabled(true)}，
+ * {@code res/menu/export.xml} 只有一项 {@code exp_gif_make}「GIF 导出」，且是
+ * {@code showAsAction="always"} —— 所以它是 ActionBar 上的文字按钮，不是溢出项。
+ *
+ * <p><b>可见性</b>：原版 {@code onCreateOptionsMenu} 里
+ * {@code if (my_Local == null) menu.setGroupVisible(0, false)} ——
+ * 从**浏览界面**（`myGridView`）进来时 {@code LOCAL} 传 {@code null}，这一项隐藏；
+ * 从**推关卡界面**（`myGameView`）进来时才可见。所以 {@code my_Local} 必须保持可为 {@code null}。
  */
 public class myExport extends JFrame {
 
@@ -22,11 +31,13 @@ public class myExport extends JFrame {
     public JCheckBox cb_Cur;
     public JCheckBox cb_Trun;
     public JButton bt_OK;
+    private myActionBar actionBar;
 
     int m_Gif_Start;
     boolean is_ANS;
-    String my_Local = "";
-    String my_Loca8 = "";
+    /** 原版 {@code LOCAL}：{@code null} 表示「浏览界面的导出」（此时「GIF 导出」菜单项隐藏） */
+    String my_Local;
+    String my_Loca8;
     String my_XSB = "";
     String my_Lurd = "";
     String my_imPort_YASS = "";
@@ -41,8 +52,8 @@ public class myExport extends JFrame {
 
         this.my_XSB = xsb != null ? xsb : "";
         this.my_Lurd = lurd != null ? lurd : "";
-        this.my_Local = local != null ? local : "";
-        this.my_Loca8 = local8 != null ? local8 : "";
+        this.my_Local = local;                      // 保持可为 null（见类注释）
+        this.my_Loca8 = local8;
         this.is_ANS = isAns;
         this.m_Gif_Start = gifStart;
         this.my_Rule = rule;
@@ -73,8 +84,7 @@ public class myExport extends JFrame {
 
         initUI();
 
-        // ⚠️ 必须在 initUI()（内含 setJMenuBar）之后再调，否则菜单栏会从内容区里
-        // 挖走 23px，内容区变成 370×757。见 UiWindow 的说明。
+        // ⚠️ 必须在 UI 全部装好之后再调（见 UiWindow 的说明）
         UiWindow.applyPhoneSize(this);
     }
 
@@ -84,6 +94,15 @@ public class myExport extends JFrame {
 
     private void initUI() {
         setLayout(new BorderLayout(8, 8));
+
+        // 原版：ActionBar.setTitle("导出") + setDisplayHomeAsUpEnabled(true)
+        actionBar = new myActionBar();
+        actionBar.setBarTitle("导出");
+        actionBar.setUpEnabled(true, this::dispose);
+        // export.xml 的 exp_gif_make 是 showAsAction="always" → ActionBar 上的文字按钮
+        actionBar.addBarAction("GIF 导出", this::showGifDialog);
+        // onCreateOptionsMenu：浏览界面的导出（LOCAL == null）时该项隐藏
+        actionBar.setBarActionVisible("GIF 导出", my_Local != null);
 
         JPanel topOptions = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 6));
         cb_XSB = new JCheckBox("关卡(XSB)", true);
@@ -96,11 +115,19 @@ public class myExport extends JFrame {
         topOptions.add(cb_XSB);
         topOptions.add(cb_Lurd);
         topOptions.add(cb_File);
-        if (!my_Local.isEmpty()) {
+        if (my_Local != null) {
             topOptions.add(cb_Cur);
             topOptions.add(cb_Trun);
         }
-        add(topOptions, BorderLayout.NORTH);
+
+        // ActionBar 与选项行都靠顶：BorderLayout 的 NORTH 只能放一个，所以套一层竖排容器
+        JPanel north = new JPanel();
+        north.setLayout(new BoxLayout(north, BoxLayout.Y_AXIS));
+        actionBar.setAlignmentX(Component.LEFT_ALIGNMENT);
+        topOptions.setAlignmentX(Component.LEFT_ALIGNMENT);
+        north.add(actionBar);
+        north.add(topOptions);
+        add(north, BorderLayout.NORTH);
 
         et_Action = new JTextArea();
         et_Action.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
@@ -127,27 +154,14 @@ public class myExport extends JFrame {
         cb_Trun.addActionListener(e -> updateContent());
 
         bt_OK.addActionListener(e -> doExport());
-
-        // Menu Bar
-        setJMenuBar(createMenuBar());
-    }
-
-    private JMenuBar createMenuBar() {
-        JMenuBar mb = new JMenuBar();
-        JMenu mTool = new JMenu("工具");
-        JMenuItem miGif = new JMenuItem("导出为动画 (GIF)...");
-        miGif.addActionListener(e -> showGifDialog());
-        mTool.add(miGif);
-        mb.add(mTool);
-        return mb;
     }
 
     private void updateContent() {
         if (cb_Cur != null && cb_Cur.isSelected()) {
-            if (cb_Trun.isSelected() && !my_Loca8.isEmpty()) {
+            if (cb_Trun.isSelected() && my_Loca8 != null && !my_Loca8.isEmpty()) {
                 et_Action.setText(my_Loca8);
             } else {
-                et_Action.setText(my_Local);
+                et_Action.setText(my_Local == null ? "" : my_Local);
             }
             return;
         }
