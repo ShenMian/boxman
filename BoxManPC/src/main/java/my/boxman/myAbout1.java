@@ -2,6 +2,7 @@ package my.boxman;
 
 import javax.swing.*;
 import java.awt.*;
+import my.boxman.compat.UiWindow;
 
 public class myAbout1 extends JDialog {
 
@@ -19,8 +20,7 @@ public class myAbout1 extends JDialog {
     }
 
     private void initUI(String message) {
-        setSize(500, 480);
-        setMinimumSize(new Dimension(420, 380));
+        UiWindow.applyPhoneSize(this);
         setLocationRelativeTo(getOwner());
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 

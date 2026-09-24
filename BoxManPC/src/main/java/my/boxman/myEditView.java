@@ -9,6 +9,7 @@ import java.awt.datatransfer.StringSelection;
 import java.awt.event.*;
 import java.io.*;
 import java.util.*;
+import my.boxman.compat.UiWindow;
 
 /**
  * Level Editor for BoxMan PC (Swing Port).
@@ -100,7 +101,7 @@ public class myEditView extends JFrame {
 
     public myEditView() {
         setTitle("关卡编辑器 - 推箱快手");
-        setSize(800, 600);
+        UiWindow.applyPhoneSize(this);
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
             @Override

@@ -16,6 +16,7 @@ import java.util.*;
 import java.util.Queue;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import my.boxman.compat.UiWindow;
 
 public class myGameView extends JFrame {
 
@@ -174,8 +175,7 @@ public class myGameView extends JFrame {
     public myGameView() {
         setTitle("推箱快手");
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-        setSize(800, 600);
-        setMinimumSize(new Dimension(500, 400));
+        UiWindow.applyPhoneSize(this);
         setLocationRelativeTo(null);
 
         addWindowListener(new WindowAdapter() {

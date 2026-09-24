@@ -5,6 +5,7 @@ import java.awt.*;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import my.boxman.compat.UiWindow;
 
 /**
  * Similar Level Solution Browser for BoxMan PC (Swing Port).
@@ -17,7 +18,7 @@ public class mySolutionBrow extends JDialog {
 
     public mySolutionBrow(Frame parent) {
         super(parent, "相似关卡答案 - 推箱快手", true);
-        setSize(500, 400);
+        UiWindow.applyPhoneSize(this);
         setLocationRelativeTo(parent);
 
         initUI();

@@ -17,6 +17,7 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
 import java.util.ArrayList;
+import my.boxman.compat.UiWindow;
 
 /**
  * 主界面（原版 my.boxman.BoxMan Activity）。
@@ -44,8 +45,11 @@ public class BoxManPC extends JFrame {
     private static final Color CHILD_FG = new Color(0xBBBBBB);
     /** main.xml: android:listSelector="#ff0064aa" */
     private static final Color SELECT_BG = new Color(0x0064AA);
-    /** ExpandableListView 行分隔线（原版实测为白色 15% 叠加在 #004040 上） */
-    private static final Color DIVIDER_FG = new Color(0x26, 0x5D, 0x5D);
+    /**
+     * ExpandableListView 行分隔线。
+     * 原版实测：2px 的 (37,93,94) 落在 #004040 上，折算到 1dp 宽度即 (23,81,81)。
+     */
+    private static final Color DIVIDER_FG = new Color(0x17, 0x51, 0x51);
     /** 组别展开指示器（原版 expander 图标颜色） */
     private static final Color INDICATOR_FG = new Color(0xCCCCCC);
 
@@ -67,6 +71,12 @@ public class BoxManPC extends JFrame {
     private static final int INDICATOR_TEXT_GAP = ITEM_PADDING_LEFT - INDICATOR_LEFT - INDICATOR_WIDTH;
 
     private static final Font ITEM_FONT = new Font("Microsoft YaHei", Font.PLAIN, ITEM_TEXT_SIZE);
+
+    // ------------------------------------------------------------ 窗口尺寸
+    // 原版 AndroidManifest 中所有 Activity 均为 android:screenOrientation="portrait"（竖屏），
+    // 应用可用区域 370dp x 780dp（见 compat/UiWindow），PC 端按 1dp = 1px 取 370x780。
+    private static final int PHONE_CONTENT_WIDTH = UiWindow.PHONE_WIDTH;
+    private static final int PHONE_CONTENT_HEIGHT = UiWindow.PHONE_HEIGHT;
 
     /** 原版 BoxMan.java: private String[] groups = {"入门关卡", "进阶关卡", "花样关卡", "关卡扩展"}; */
     private static final String[] GROUPS = {"入门关卡", "进阶关卡", "花样关卡", "关卡扩展"};
@@ -93,13 +103,12 @@ public class BoxManPC extends JFrame {
     public BoxManPC() {
         // 原版 AndroidManifest: android:label="@string/app_name" → "推箱快手"
         setTitle("推箱快手");
-        setSize(800, 600);
-        setMinimumSize(new Dimension(420, 360));
-        setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
         initAppEnvironment();
         initUI();
+        // 原版 AndroidManifest: 主 Activity 为 portrait，窗口保持手机竖屏尺寸
+        UiWindow.applyPhoneSize(this);
     }
 
     private void initAppEnvironment() {
@@ -107,8 +116,9 @@ public class BoxManPC extends JFrame {
             myMaps.sRoot = System.getProperty("user.home") + "/.boxman";
         }
         myMaps.sPath = "/";
-        myMaps.m_nWinWidth = getWidth();
-        myMaps.m_nWinHeight = getHeight();
+        // 原版：myMaps.m_nWinWidth/Height = 设备屏幕尺寸；PC 端取主窗口的竖屏内容尺寸
+        myMaps.m_nWinWidth = PHONE_CONTENT_WIDTH;
+        myMaps.m_nWinHeight = PHONE_CONTENT_HEIGHT;
 
         new File(myMaps.sRoot).mkdirs();
 

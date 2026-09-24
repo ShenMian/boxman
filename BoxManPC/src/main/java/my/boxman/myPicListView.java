@@ -10,6 +10,7 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import my.boxman.compat.UiWindow;
 
 /**
  * Image Browser Grid View for BoxMan PC (Swing Port).
@@ -23,7 +24,7 @@ public class myPicListView extends JFrame {
 
     public myPicListView() {
         setTitle("图片列表 - 推箱快手");
-        setSize(700, 500);
+        UiWindow.applyPhoneSize(this);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 

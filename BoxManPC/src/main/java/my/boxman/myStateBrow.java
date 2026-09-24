@@ -6,6 +6,7 @@ import java.awt.datatransfer.StringSelection;
 import java.awt.event.*;
 import java.util.Collections;
 import java.util.Comparator;
+import my.boxman.compat.UiWindow;
 
 /**
  * Level State and Solution Browser for BoxMan PC (Swing Port).
@@ -38,7 +39,7 @@ public class myStateBrow extends JFrame {
 
     public myStateBrow() {
         setTitle("关卡状态与答案 - 推箱快手");
-        setSize(550, 450);
+        UiWindow.applyPhoneSize(this);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setLocationRelativeTo(null);
 

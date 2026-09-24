@@ -3,6 +3,7 @@ package my.boxman;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import my.boxman.compat.UiWindow;
 
 public class myAbout2 extends JDialog {
 
@@ -20,8 +21,7 @@ public class myAbout2 extends JDialog {
     }
 
     private void initUI() {
-        setSize(520, 520);
-        setMinimumSize(new Dimension(450, 420));
+        UiWindow.applyPhoneSize(this);
         setLocationRelativeTo(getOwner());
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 

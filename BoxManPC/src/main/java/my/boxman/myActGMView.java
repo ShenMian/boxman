@@ -7,6 +7,7 @@ import java.awt.datatransfer.StringSelection;
 import java.io.File;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import my.boxman.compat.UiWindow;
 
 /**
  * Action Manager for BoxMan PC (Swing Port).
@@ -29,7 +30,7 @@ public class myActGMView extends JDialog {
         super(parent, "动作管理", true);
         this.is_BK = isBK;
 
-        setSize(600, 500);
+        UiWindow.applyPhoneSize(this);
         setLocationRelativeTo(parent);
         initUI();
     }

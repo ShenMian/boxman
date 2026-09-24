@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import my.boxman.compat.UiWindow;
 
 /**
  * Level Export Frame for BoxMan PC (Swing Port).
@@ -36,7 +37,7 @@ public class myExport extends JFrame {
 
     public myExport(String xsb, String lurd, String local, String local8, boolean isAns, int gifStart, boolean[] rule, short[] boxNum, String importYass) {
         setTitle("导出 - 推箱快手");
-        setSize(650, 520);
+        UiWindow.applyPhoneSize(this);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 

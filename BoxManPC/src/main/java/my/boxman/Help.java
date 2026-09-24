@@ -4,6 +4,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import my.boxman.compat.UiWindow;
 
 public class Help extends JFrame {
 
@@ -20,8 +21,7 @@ public class Help extends JFrame {
     }
 
     private void initUI() {
-        setSize(700, 650);
-        setMinimumSize(new Dimension(500, 400));
+        UiWindow.applyPhoneSize(this);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 

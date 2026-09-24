@@ -4,6 +4,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import my.boxman.compat.UiWindow;
 
 /**
  * Similar Level Comparison View for BoxMan PC (Swing Port).
@@ -29,7 +30,7 @@ public class myFindView extends JFrame {
 
     public myFindView() {
         setTitle("相似关卡对比 - 推箱快手");
-        setSize(800, 600);
+        UiWindow.applyPhoneSize(this);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 

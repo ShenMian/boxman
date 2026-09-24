@@ -6,6 +6,7 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.io.File;
 import java.util.Arrays;
+import my.boxman.compat.UiWindow;
 
 /**
  * Level Image Recognition Frame for BoxMan PC (Swing Port).
@@ -23,7 +24,7 @@ public class myRecogView extends JFrame {
 
     public myRecogView() {
         setTitle("图像识别 - 推箱快手");
-        setSize(850, 650);
+        UiWindow.applyPhoneSize(this);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 

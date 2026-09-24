@@ -9,6 +9,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
+import my.boxman.compat.UiWindow;
 
 public class myGridView extends JFrame {
 
@@ -35,8 +36,7 @@ public class myGridView extends JFrame {
         myMaps.sFile = setTitle != null ? setTitle : "关卡列表";
 
         setTitle(myMaps.sFile);
-        setSize(850, 650);
-        setMinimumSize(new Dimension(600, 450));
+        UiWindow.applyPhoneSize(this);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
