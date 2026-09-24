@@ -1,5 +1,7 @@
 package my.boxman;
 
+import my.boxman.compat.HoloPopupMenu;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
@@ -38,21 +40,11 @@ public class myActionBar extends JPanel {
     private static final Color BAR_BG = new Color(0x0083C5);          // style.xml
     private static final Color TITLE_FG = Color.WHITE;                // style.xml
     private static final Color DOT_FG = new Color(0x80C1E1);          // 白色 50% 叠加在 #0083C5 上
-    private static final Color MENU_BG = new Color(0x333333);         // Holo 深色弹出菜单
-    private static final Color MENU_FG = new Color(0xEEEEEE);
-    private static final Color MENU_HOVER = new Color(0x0083C5);
-    private static final Color MENU_DISABLED = new Color(0x777777);
-    private static final Color MENU_SEPARATOR = new Color(0x555555);
 
     private static final int TITLE_PADDING_LEFT = 16;
     private static final int TITLE_TEXT_SIZE = 14;
     private static final int DOT_SIZE = 5;
     private static final int DOT_GAP = 8;
-    private static final int MENU_TEXT_SIZE = 15;
-    private static final int MENU_ROW_HEIGHT = 40;
-    private static final int MENU_PADDING_LEFT = 16;
-    private static final int MENU_CHECK_WIDTH = 22;
-    private static final int MENU_MIN_WIDTH = 200;
 
     /** 原版 action_button_min_width */
     private static final int BAR_ACTION_WIDTH = 56;
@@ -75,7 +67,7 @@ public class myActionBar extends JPanel {
     private static final int BAR_ACTION_GAP = 6;
 
     private final JLabel titleLabel = new JLabel();
-    private final JPopupMenu overflowMenu = new JPopupMenu();
+    private final JPopupMenu overflowMenu = HoloPopupMenu.create();
     private final OverflowButton overflowButton = new OverflowButton();
     private final JPanel barActionStrip = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
     private final UpIndicator upIndicator = new UpIndicator();
@@ -89,13 +81,7 @@ public class myActionBar extends JPanel {
      * 而关卡网格界面有溢出项时，⋮ 是 48dp 且右边距 4dp。所以边距随 ⋮ 的可见性切换。
      */
     private void refreshOverflow() {
-        boolean show = false;
-        for (Component c : overflowMenu.getComponents()) {
-            if (c instanceof MenuRow && c.isVisible()) {
-                show = true;
-                break;
-            }
-        }
+        boolean show = HoloPopupMenu.hasVisibleItems(overflowMenu);
         overflowButton.setVisible(show);
         overflowWrap.setBorder(new EmptyBorder(0, show ? BAR_ACTION_GAP : 0, 0, 0));
         eastPanel.setBorder(new EmptyBorder(0, 0, 0, show ? OVERFLOW_RIGHT_INSET : 0));
@@ -113,9 +99,6 @@ public class myActionBar extends JPanel {
         titleLabel.setForeground(TITLE_FG);
         titleLabel.setFont(new Font("Microsoft YaHei", Font.PLAIN, TITLE_TEXT_SIZE));
         titleLabel.setBorder(BorderFactory.createEmptyBorder(0, TITLE_PADDING_LEFT, 0, 0));
-
-        overflowMenu.setBackground(MENU_BG);
-        overflowMenu.setBorder(BorderFactory.createLineBorder(MENU_SEPARATOR));
 
         barActionStrip.setOpaque(false);
 
@@ -170,9 +153,8 @@ public class myActionBar extends JPanel {
 
     /** 追加一个菜单项；enabled=false 时置灰（用于尚未移植的功能项） */
     public void addAction(String title, boolean enabled, Runnable action) {
-        MenuRow row = new MenuRow(title, action);
+        HoloPopupMenu.Row row = HoloPopupMenu.addItem(overflowMenu, title, action);
         row.setEnabled(enabled);
-        overflowMenu.add(row);
         refreshOverflow();
     }
 
@@ -189,13 +171,7 @@ public class myActionBar extends JPanel {
 
     /** 按标题显示/隐藏溢出菜单项（原版 setMenu 中的 setVisible） */
     public void setActionVisible(String title, boolean visible) {
-        for (Component c : overflowMenu.getComponents()) {
-            if (c instanceof MenuRow && ((MenuRow) c).text.equals(title)) {
-                c.setVisible(visible);
-            }
-        }
-        overflowMenu.revalidate();
-        overflowMenu.repaint();
+        HoloPopupMenu.setVisible(overflowMenu, title, visible);
         refreshOverflow();
     }
 
@@ -212,27 +188,17 @@ public class myActionBar extends JPanel {
 
     /** 按标题设置菜单项的勾选态（原版 android:checkable="true"） */
     public void setActionChecked(String title, boolean checked) {
-        for (Component c : overflowMenu.getComponents()) {
-            if (c instanceof MenuRow && ((MenuRow) c).text.equals(title)) {
-                ((MenuRow) c).setChecked(checked);
-            }
-        }
+        HoloPopupMenu.setChecked(overflowMenu, title, checked);
     }
 
     /** 该溢出菜单项当前是否可见（供自检/测试） */
     public boolean isActionVisible(String title) {
-        for (Component c : overflowMenu.getComponents()) {
-            if (c instanceof MenuRow && ((MenuRow) c).text.equals(title)) return c.isVisible();
-        }
-        return false;
+        return HoloPopupMenu.isVisible(overflowMenu, title);
     }
 
     /** 该溢出菜单项是否处于勾选态（供自检/测试） */
     public boolean isActionChecked(String title) {
-        for (Component c : overflowMenu.getComponents()) {
-            if (c instanceof MenuRow && ((MenuRow) c).text.equals(title)) return ((MenuRow) c).checked;
-        }
-        return false;
+        return HoloPopupMenu.isChecked(overflowMenu, title);
     }
 
     /** 该 ActionBar 动作项当前是否可见（供自检/测试） */
@@ -259,22 +225,18 @@ public class myActionBar extends JPanel {
 
     /** 追加一条分隔线 */
     public void addSeparator() {
-        overflowMenu.add(new MenuSeparator());
+        HoloPopupMenu.addSeparator(overflowMenu);
         refreshOverflow();
     }
 
     /** 菜单项数量（不含分隔线） */
     public int getActionCount() {
-        int n = 0;
-        for (Component c : overflowMenu.getComponents()) {
-            if (c instanceof MenuRow) n++;
-        }
-        return n;
+        return HoloPopupMenu.itemCount(overflowMenu);
     }
 
     /** 以编程方式展开溢出菜单 */
     public void showOverflow() {
-        if (overflowMenu.getComponentCount() == 0) return;
+        if (!HoloPopupMenu.hasVisibleItems(overflowMenu)) return;
         if (!overflowButton.isShowing()) return;   // JPopupMenu 要求 invoker 已显示
         int x = overflowButton.getWidth() - overflowMenu.getPreferredSize().width;
         if (x < 0) x = 0;
@@ -455,103 +417,6 @@ public class myActionBar extends JPanel {
         }
     }
 
-    // ------------------------------------------------------------------ 菜单行
-
-    private class MenuRow extends JComponent {
-        private final String text;
-        private final Runnable action;
-        private boolean enabled = true;
-        private boolean checked;
-        private boolean hover;
-
-        MenuRow(String text, Runnable action) {
-            this.text = text;
-            this.action = action;
-            setFont(new Font("Microsoft YaHei", Font.PLAIN, MENU_TEXT_SIZE));
-            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseEntered(MouseEvent e) {
-                    hover = true;
-                    repaint();
-                }
-
-                @Override
-                public void mouseExited(MouseEvent e) {
-                    hover = false;
-                    repaint();
-                }
-
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    if (!MenuRow.this.enabled) return;
-                    overflowMenu.setVisible(false);
-                    if (MenuRow.this.action != null) MenuRow.this.action.run();
-                }
-            });
-        }
-
-        void setChecked(boolean checked) {
-            this.checked = checked;
-            repaint();
-        }
-
-        @Override
-        public void setEnabled(boolean enabled) {
-            this.enabled = enabled;
-            setCursor(Cursor.getPredefinedCursor(enabled ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
-            repaint();
-        }
-
-        @Override
-        public boolean isEnabled() {
-            return enabled;
-        }
-
-        @Override
-        public Dimension getPreferredSize() {
-            if (!isVisible()) return new Dimension(0, 0);
-            FontMetrics fm = getFontMetrics(getFont());
-            int w = fm.stringWidth(text) + MENU_PADDING_LEFT * 2 + MENU_CHECK_WIDTH;
-            return new Dimension(Math.max(w, MENU_MIN_WIDTH), MENU_ROW_HEIGHT);
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            g2.setColor(hover && enabled ? MENU_HOVER : MENU_BG);
-            g2.fillRect(0, 0, getWidth(), getHeight());
-            g2.setColor(enabled ? MENU_FG : MENU_DISABLED);
-            g2.setFont(getFont());
-            FontMetrics fm = g2.getFontMetrics();
-            int baseline = (getHeight() + fm.getAscent() - fm.getDescent()) / 2;
-            if (checked) {
-                // 原版 Holo 菜单勾选标记（✓）
-                g2.drawString("\u2713", MENU_PADDING_LEFT, baseline);
-            }
-            g2.drawString(text, MENU_PADDING_LEFT + MENU_CHECK_WIDTH, baseline);
-            g2.dispose();
-        }
-    }
-
-    private static class MenuSeparator extends JComponent {
-        MenuSeparator() {
-            setBackground(MENU_SEPARATOR);
-        }
-
-        @Override
-        public Dimension getPreferredSize() {
-            return new Dimension(MENU_MIN_WIDTH, 1);
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            g.setColor(MENU_SEPARATOR);
-            g.fillRect(0, 0, getWidth(), getHeight());
-        }
-    }
-
     // ------------------------------------------------------------------ 静态工具
 
     /** 生成一个「组别展开指示器」图标（原版 expander 图标：粗折线 ^ / v） */
@@ -584,8 +449,13 @@ public class myActionBar extends JPanel {
     public List<String> getActionTitles() {
         List<String> titles = new ArrayList<String>();
         for (Component c : overflowMenu.getComponents()) {
-            if (c instanceof MenuRow) titles.add(((MenuRow) c).text);
+            if (c instanceof HoloPopupMenu.Row) titles.add(((HoloPopupMenu.Row) c).getText());
         }
         return titles;
+    }
+
+    /** 暴露底层弹出菜单，便于需要同样 Holo 样式的上下文菜单复用同一套渲染 */
+    public JPopupMenu getOverflowMenu() {
+        return overflowMenu;
     }
 }

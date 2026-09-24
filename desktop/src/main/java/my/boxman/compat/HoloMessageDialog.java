@@ -26,7 +26,15 @@ public class HoloMessageDialog extends HoloAlertDialog {
 
     public HoloMessageDialog(Frame owner, String title, String message, String buttonText) {
         super(owner, title);
+        setContentView(messageBody(message));
+        addButton(buttonText, this::dispose);
+    }
 
+    /**
+     * 原版 {@code AlertDialog} 的 {@code TextView#message} 区域。
+     * 单按钮的 {@link HoloMessageDialog} 与双按钮的 {@link HoloConfirmDialog} 共用。
+     */
+    public static JComponent messageBody(String message) {
         JLabel text = new JLabel("<html><body style='width:" + WRAP_WIDTH + "px'>"
                 + escape(message) + "</body></html>");
         text.setForeground(HoloContent.TEXT);      // bright_foreground_holo_dark
@@ -37,9 +45,7 @@ public class HoloMessageDialog extends HoloAlertDialog {
         body.setBackground(PANEL_BG);              // 9-patch 填充色，message 本身透明
         body.setBorder(BorderFactory.createEmptyBorder(PAD_V, PAD_H, PAD_V, PAD_H));
         body.add(text, BorderLayout.CENTER);
-
-        setContentView(body);
-        addButton(buttonText, this::dispose);
+        return body;
     }
 
     /** 正文是 HTML，转义掉会破坏标签的字符。 */

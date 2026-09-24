@@ -90,10 +90,14 @@ public class Phase4SecondaryViewTest {
     @Test
     public void testStateBrowAndSolutionBrow() {
         myStateBrow stateBrow = new myStateBrow();
-        assertNotNull("TabbedPane should exist", stateBrow.tabPane);
-        assertEquals("Should have 2 tabs", 2, stateBrow.tabPane.getTabCount());
-        assertNotNull("listStates should exist", stateBrow.listStates);
-        assertNotNull("listAnswers should exist", stateBrow.listAnswers);
+        // 原版是 ExpandableListView 两个分组（状态 / 答案），PC 用 JTree 等价实现，
+        // 不再是早先那版自造的 JTabbedPane。
+        assertNotNull("ActionBar should exist", stateBrow.getActionBar());
+        assertEquals("ActionBar title", "关卡状态", stateBrow.getActionBar().getBarTitle());
+        assertTrue("ActionBar should show the up chevron", stateBrow.getActionBar().isUpEnabled());
+        assertNotNull("Tree should exist", stateBrow.getTree());
+        assertEquals("Should have 2 groups", 2, stateBrow.getTree().getModel().getChildCount(
+                stateBrow.getTree().getModel().getRoot()));
 
         mySolutionBrow solBrow = new mySolutionBrow(null);
         assertNotNull("listSolutions should exist", solBrow.listSolutions);
