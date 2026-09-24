@@ -5,6 +5,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import javax.swing.*;
+import java.awt.Color;
 import java.io.File;
 import java.io.FileWriter;
 import java.util.ArrayList;
@@ -28,8 +29,21 @@ public class Phase3NavigationTest {
     public void testBoxManPCAndTreeInitialization() {
         BoxManPC app = new BoxManPC();
         Assert.assertNotNull("BoxManPC should be initialized", app);
-        Assert.assertNotNull("Menu bar should be present", app.getJMenuBar());
-        Assert.assertTrue("Menu count should be >= 3", app.getJMenuBar().getMenuCount() >= 3);
+
+        // 主界面已按原版改为 ActionBar + 溢出菜单（原版 res/menu/main.xml 共 10 项），
+        // 不再使用 PC 专属的 JMenuBar
+        Assert.assertNull("主界面不应再有 PC 专属菜单栏", app.getJMenuBar());
+        Assert.assertNotNull("应存在 ActionBar", app.getActionBar());
+        Assert.assertEquals("溢出菜单项数量应与 res/menu/main.xml 一致",
+                10, app.getActionBar().getActionCount());
+        Assert.assertTrue("ActionBar 标题应为“推箱快手 ( 已解 / 总数 )”",
+                app.getActionBar().getBarTitle().startsWith("推箱快手 ("));
+
+        // 列表条目文案应与原版 v_groups.xml / v_child.xml 的拼接规则一致
+        java.util.List<String> rows = app.getVisibleRowTexts();
+        Assert.assertEquals("入门关卡 【7】", rows.get(0));
+        Assert.assertEquals("BoxWorld （1/100）", rows.get(1));
+        Assert.assertEquals(new Color(0x004040), app.getListBackground());
 
         app.dispose();
     }
