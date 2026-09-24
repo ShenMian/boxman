@@ -376,7 +376,7 @@ public class BoxManPC extends JFrame {
         actionBar.addAction("新建关卡集...", this::createNewSet);
         actionBar.addAction("创编关卡★", this::openEditor);
         actionBar.addAction("图像识别", this::openRecognition);
-        actionBar.addAction("比赛答案提交列表", false, myActionBar.NO_OP);
+        actionBar.addAction("比赛答案提交列表", () -> new mySubmitList().setVisible(true));
         actionBar.addAction("帮助", () -> new Help(0).setVisible(true));
         actionBar.addAction("关于", this::showAboutDialog);
     }

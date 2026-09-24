@@ -79,6 +79,29 @@ public class myActionBar extends JPanel {
     private final OverflowButton overflowButton = new OverflowButton();
     private final JPanel barActionStrip = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
     private final UpIndicator upIndicator = new UpIndicator();
+    private final JPanel eastPanel;
+    private final JPanel overflowWrap;
+
+    /**
+     * 原版 ActionBar 只在溢出菜单**有内容**时才画 ⋮。
+     * 实测「提交列表」截图（`menu/submit_list.xml` 只有一条 `showAsAction="always"` 的「刷新」）：
+     * ActionBar 右侧只有一个动作项，ink 中心 x≈341.9dp，按钮 56dp 且**右边距为 0**（314..370）。
+     * 而关卡网格界面有溢出项时，⋮ 是 48dp 且右边距 4dp。所以边距随 ⋮ 的可见性切换。
+     */
+    private void refreshOverflow() {
+        boolean show = false;
+        for (Component c : overflowMenu.getComponents()) {
+            if (c instanceof MenuRow && c.isVisible()) {
+                show = true;
+                break;
+            }
+        }
+        overflowButton.setVisible(show);
+        overflowWrap.setBorder(new EmptyBorder(0, show ? BAR_ACTION_GAP : 0, 0, 0));
+        eastPanel.setBorder(new EmptyBorder(0, 0, 0, show ? OVERFLOW_RIGHT_INSET : 0));
+        revalidate();
+        repaint();
+    }
 
     public myActionBar() {
         setLayout(new BorderLayout());
@@ -97,19 +120,18 @@ public class myActionBar extends JPanel {
         barActionStrip.setOpaque(false);
 
         // EAST 侧：动作项（顶/底…）在左，溢出按钮在最右
-        JPanel east = new JPanel(new BorderLayout());
-        east.setOpaque(false);
-        east.setBorder(new EmptyBorder(0, 0, 0, OVERFLOW_RIGHT_INSET));
-        east.add(barActionStrip, BorderLayout.CENTER);
+        eastPanel = new JPanel(new BorderLayout());
+        eastPanel.setOpaque(false);
+        eastPanel.add(barActionStrip, BorderLayout.CENTER);
 
-        JPanel overflowWrap = new JPanel(new BorderLayout());
+        overflowWrap = new JPanel(new BorderLayout());
         overflowWrap.setOpaque(false);
-        overflowWrap.setBorder(new EmptyBorder(0, BAR_ACTION_GAP, 0, 0));
         overflowWrap.add(overflowButton, BorderLayout.CENTER);
-        east.add(overflowWrap, BorderLayout.EAST);
+        eastPanel.add(overflowWrap, BorderLayout.EAST);
 
         add(titleLabel, BorderLayout.CENTER);
-        add(east, BorderLayout.EAST);
+        add(eastPanel, BorderLayout.EAST);
+        refreshOverflow();
         // WEST 侧：返回折角（默认隐藏，原版由 setDisplayHomeAsUpEnabled 控制）
         upIndicator.setVisible(false);
         add(upIndicator, BorderLayout.WEST);
@@ -146,6 +168,7 @@ public class myActionBar extends JPanel {
         MenuRow row = new MenuRow(title, action);
         row.setEnabled(enabled);
         overflowMenu.add(row);
+        refreshOverflow();
     }
 
     /** 追加一个 showAsAction="always" 的动作项（原版 ActionBar 上的纯文字按钮） */
@@ -168,6 +191,7 @@ public class myActionBar extends JPanel {
         }
         overflowMenu.revalidate();
         overflowMenu.repaint();
+        refreshOverflow();
     }
 
     /** 按标题显示/隐藏 ActionBar 上的动作项 */
@@ -219,9 +243,19 @@ public class myActionBar extends JPanel {
         return barActionStrip.getComponentCount();
     }
 
+    /**
+     * 溢出按钮（⋮）当前是否可见。原版只在溢出菜单有内容时才画它
+     * —— 例如「提交列表」的 {@code menu/submit_list.xml} 只有一条 {@code showAsAction="always"}，
+     * 所以右侧只有一个动作项，没有 ⋮。
+     */
+    public boolean isOverflowVisible() {
+        return overflowButton.isVisible();
+    }
+
     /** 追加一条分隔线 */
     public void addSeparator() {
         overflowMenu.add(new MenuSeparator());
+        refreshOverflow();
     }
 
     /** 菜单项数量（不含分隔线） */

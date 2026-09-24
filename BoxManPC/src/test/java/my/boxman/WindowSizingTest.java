@@ -94,5 +94,8 @@ public class WindowSizingTest {
         mySQLite.m_SQL.get_Levels(setId);
         Assert.assertFalse("应有至少一关", myMaps.m_lstMaps.isEmpty());
         assertPhonePortrait("myAbout2", new myAbout2(null, myMaps.m_lstMaps.get(0)));
+
+        // autoLoad=false：只建界面，不发网络请求
+        assertPhonePortrait("mySubmitList", new mySubmitList(false));
     }
 }
