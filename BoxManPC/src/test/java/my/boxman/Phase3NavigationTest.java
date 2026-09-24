@@ -59,7 +59,9 @@ public class Phase3NavigationTest {
 
         myGridView grid = new myGridView(setId, title);
         Assert.assertNotNull(grid);
-        Assert.assertNotNull(grid.getJMenuBar());
+        // 原版关卡网格界面用 ActionBar（含返回折角）而非 PC 特有的 JMenuBar
+        Assert.assertNull("myGridView 不应有 JMenuBar（原版为 ActionBar）", grid.getJMenuBar());
+        Assert.assertNotNull("myGridView 应有 ActionBar", grid.getActionBar());
         Assert.assertNotNull(myMaps.m_lstMaps);
         Assert.assertFalse("Levels should be loaded", myMaps.m_lstMaps.isEmpty());
 

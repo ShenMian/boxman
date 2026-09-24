@@ -1,6 +1,7 @@
 package my.boxman;
 
 import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -21,6 +22,13 @@ import java.util.List;
  *   标题字高 44px（列表 16sp 字高 52px）→ 标题约 14sp；
  *   溢出按钮为三个圆点，直径 17px ≈ 5dp，间距 26px ≈ 8dp，
  *   颜色 (128,193,225) 即白色 50% 叠加在 #0083C5 上。
+ *
+ * 第二屏（关卡网格 myGridView）追加实测（同一张截图）：
+ *   ActionBar 左侧「返回」折角：ink 22x46px ≈ 6.5x13.5dp，中心 x=25px ≈ 7.4dp，
+ *     颜色同为 (128,193,225)；
+ *   ActionBar 标题左边界 x=58px ≈ 17dp（与无返回键时的 16dp 基本一致）；
+ *   showAsAction="always" 的动作项（顶/底）为纯文字按钮，宽 56dp，
+ *     字形 ink 高 37~39px ≈ 0.8em → 14sp 粗体，颜色实测平台值 (243,243,243)。
  */
 public class myActionBar extends JPanel {
 
@@ -43,11 +51,34 @@ public class myActionBar extends JPanel {
     private static final int MENU_TEXT_SIZE = 15;
     private static final int MENU_ROW_HEIGHT = 40;
     private static final int MENU_PADDING_LEFT = 16;
+    private static final int MENU_CHECK_WIDTH = 22;
     private static final int MENU_MIN_WIDTH = 200;
+
+    /** 原版 action_button_min_width */
+    private static final int BAR_ACTION_WIDTH = 56;
+    private static final int BAR_ACTION_TEXT_SIZE = 14;
+    private static final Color BAR_ACTION_FG = new Color(0xF3F3F3);
+    private static final Color BAR_ACTION_DISABLED = new Color(0x9FC7DE);
+    private static final Color BAR_ACTION_HOVER = new Color(255, 255, 255, 40);
+
+    /** 原版 setDisplayHomeAsUpEnabled(true) 的折角宽度 */
+    private static final int UP_WIDTH = 17;
+    private static final int UP_INK_WIDTH = 7;
+    private static final int UP_INK_HEIGHT = 14;
+
+    /**
+     * 右侧留白与动作项/溢出按钮间距。
+     * 实测（关卡网格界面截图，1dp=1px）：溢出圆点中心 x≈342，按钮宽 48 → 右边距 4；
+     * 「底」中心 x≈285 → 按钮右边界 313，与溢出按钮左边界 318 之间留 6。
+     */
+    private static final int OVERFLOW_RIGHT_INSET = 4;
+    private static final int BAR_ACTION_GAP = 6;
 
     private final JLabel titleLabel = new JLabel();
     private final JPopupMenu overflowMenu = new JPopupMenu();
     private final OverflowButton overflowButton = new OverflowButton();
+    private final JPanel barActionStrip = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+    private final UpIndicator upIndicator = new UpIndicator();
 
     public myActionBar() {
         setLayout(new BorderLayout());
@@ -63,8 +94,25 @@ public class myActionBar extends JPanel {
         overflowMenu.setBackground(MENU_BG);
         overflowMenu.setBorder(BorderFactory.createLineBorder(MENU_SEPARATOR));
 
+        barActionStrip.setOpaque(false);
+
+        // EAST 侧：动作项（顶/底…）在左，溢出按钮在最右
+        JPanel east = new JPanel(new BorderLayout());
+        east.setOpaque(false);
+        east.setBorder(new EmptyBorder(0, 0, 0, OVERFLOW_RIGHT_INSET));
+        east.add(barActionStrip, BorderLayout.CENTER);
+
+        JPanel overflowWrap = new JPanel(new BorderLayout());
+        overflowWrap.setOpaque(false);
+        overflowWrap.setBorder(new EmptyBorder(0, BAR_ACTION_GAP, 0, 0));
+        overflowWrap.add(overflowButton, BorderLayout.CENTER);
+        east.add(overflowWrap, BorderLayout.EAST);
+
         add(titleLabel, BorderLayout.CENTER);
-        add(overflowButton, BorderLayout.EAST);
+        add(east, BorderLayout.EAST);
+        // WEST 侧：返回折角（默认隐藏，原版由 setDisplayHomeAsUpEnabled 控制）
+        upIndicator.setVisible(false);
+        add(upIndicator, BorderLayout.WEST);
     }
 
     /** 设置标题（原版 ActionBar.setTitle） */
@@ -74,6 +122,18 @@ public class myActionBar extends JPanel {
 
     public String getBarTitle() {
         return titleLabel.getText();
+    }
+
+    /**
+     * 原版 ActionBar.setDisplayHomeAsUpEnabled(true)：显示左侧返回折角。
+     * 折角占用 17dp，此时标题左内边距归零，保证标题绝对左边界仍在 17dp。
+     */
+    public void setUpEnabled(boolean enabled, Runnable action) {
+        upIndicator.setAction(enabled ? action : null);
+        upIndicator.setVisible(enabled);
+        titleLabel.setBorder(BorderFactory.createEmptyBorder(0, enabled ? 0 : TITLE_PADDING_LEFT, 0, 0));
+        revalidate();
+        repaint();
     }
 
     /** 追加一个可用菜单项（原版 menu.xml 中的 <item>） */
@@ -86,6 +146,77 @@ public class myActionBar extends JPanel {
         MenuRow row = new MenuRow(title, action);
         row.setEnabled(enabled);
         overflowMenu.add(row);
+    }
+
+    /** 追加一个 showAsAction="always" 的动作项（原版 ActionBar 上的纯文字按钮） */
+    public void addBarAction(String title, Runnable action) {
+        addBarAction(title, true, action);
+    }
+
+    public void addBarAction(String title, boolean enabled, Runnable action) {
+        BarAction btn = new BarAction(title, action);
+        btn.setEnabled(enabled);
+        barActionStrip.add(btn);
+    }
+
+    /** 按标题显示/隐藏溢出菜单项（原版 setMenu 中的 setVisible） */
+    public void setActionVisible(String title, boolean visible) {
+        for (Component c : overflowMenu.getComponents()) {
+            if (c instanceof MenuRow && ((MenuRow) c).text.equals(title)) {
+                c.setVisible(visible);
+            }
+        }
+        overflowMenu.revalidate();
+        overflowMenu.repaint();
+    }
+
+    /** 按标题显示/隐藏 ActionBar 上的动作项 */
+    public void setBarActionVisible(String title, boolean visible) {
+        for (Component c : barActionStrip.getComponents()) {
+            if (c instanceof BarAction && ((BarAction) c).text.equals(title)) {
+                c.setVisible(visible);
+            }
+        }
+        barActionStrip.revalidate();
+        barActionStrip.repaint();
+    }
+
+    /** 按标题设置菜单项的勾选态（原版 android:checkable="true"） */
+    public void setActionChecked(String title, boolean checked) {
+        for (Component c : overflowMenu.getComponents()) {
+            if (c instanceof MenuRow && ((MenuRow) c).text.equals(title)) {
+                ((MenuRow) c).setChecked(checked);
+            }
+        }
+    }
+
+    /** 该溢出菜单项当前是否可见（供自检/测试） */
+    public boolean isActionVisible(String title) {
+        for (Component c : overflowMenu.getComponents()) {
+            if (c instanceof MenuRow && ((MenuRow) c).text.equals(title)) return c.isVisible();
+        }
+        return false;
+    }
+
+    /** 该溢出菜单项是否处于勾选态（供自检/测试） */
+    public boolean isActionChecked(String title) {
+        for (Component c : overflowMenu.getComponents()) {
+            if (c instanceof MenuRow && ((MenuRow) c).text.equals(title)) return ((MenuRow) c).checked;
+        }
+        return false;
+    }
+
+    /** 该 ActionBar 动作项当前是否可见（供自检/测试） */
+    public boolean isBarActionVisible(String title) {
+        for (Component c : barActionStrip.getComponents()) {
+            if (c instanceof BarAction && ((BarAction) c).text.equals(title)) return c.isVisible();
+        }
+        return false;
+    }
+
+    /** ActionBar 上动作项的数量（含隐藏项） */
+    public int getBarActionCount() {
+        return barActionStrip.getComponentCount();
     }
 
     /** 追加一条分隔线 */
@@ -158,12 +289,140 @@ public class myActionBar extends JPanel {
         }
     }
 
+    // ------------------------------------------------------------------ 返回折角
+
+    /**
+     * 原版 ic_ab_back_holo_light：ActionBar 左侧的「<」折角。
+     * 实测 ink 22x46px ≈ 6.5x13.5dp，中心 x=25px ≈ 7.4dp。
+     */
+    private class UpIndicator extends JComponent {
+        private Runnable action;
+        private boolean hover;
+
+        UpIndicator() {
+            setPreferredSize(new Dimension(UP_WIDTH, BAR_HEIGHT));
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            setToolTipText("返回");
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    hover = true;
+                    repaint();
+                }
+
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    hover = false;
+                    repaint();
+                }
+
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    if (action != null) action.run();
+                }
+            });
+        }
+
+        void setAction(Runnable action) {
+            this.action = action;
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            if (hover) {
+                g2.setColor(new Color(255, 255, 255, 40));
+                g2.fillRect(0, 0, getWidth(), getHeight());
+            }
+            g2.setColor(DOT_FG);
+            g2.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
+            int cx = getWidth() / 2;
+            int cy = getHeight() / 2;
+            int half = UP_INK_WIDTH / 2;
+            int halfH = UP_INK_HEIGHT / 2;
+            g2.drawLine(cx + half, cy - halfH, cx - half, cy);
+            g2.drawLine(cx - half, cy, cx + half, cy + halfH);
+            g2.dispose();
+        }
+    }
+
+    // ------------------------------------------------------------------ ActionBar 动作项
+
+    /** 原版 showAsAction="always"：ActionBar 上的纯文字按钮，宽 action_button_min_width=56dp */
+    private class BarAction extends JComponent {
+        private final String text;
+        private final Runnable action;
+        private boolean enabled = true;
+        private boolean hover;
+
+        BarAction(String text, Runnable action) {
+            this.text = text;
+            this.action = action;
+            setFont(new Font("Microsoft YaHei", Font.BOLD, BAR_ACTION_TEXT_SIZE));
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    hover = true;
+                    repaint();
+                }
+
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    hover = false;
+                    repaint();
+                }
+
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    if (enabled && BarAction.this.action != null) BarAction.this.action.run();
+                }
+            });
+        }
+
+        @Override
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+            setCursor(Cursor.getPredefinedCursor(enabled ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
+            repaint();
+        }
+
+        @Override
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        @Override
+        public Dimension getPreferredSize() {
+            return new Dimension(BAR_ACTION_WIDTH, BAR_HEIGHT);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            if (hover && enabled) {
+                g2.setColor(BAR_ACTION_HOVER);
+                g2.fillRect(0, 0, getWidth(), getHeight());
+            }
+            g2.setColor(enabled ? BAR_ACTION_FG : BAR_ACTION_DISABLED);
+            g2.setFont(getFont());
+            FontMetrics fm = g2.getFontMetrics();
+            int tw = fm.stringWidth(text);
+            int baseline = (getHeight() + fm.getAscent() - fm.getDescent()) / 2;
+            g2.drawString(text, (getWidth() - tw) / 2, baseline);
+            g2.dispose();
+        }
+    }
+
     // ------------------------------------------------------------------ 菜单行
 
     private class MenuRow extends JComponent {
         private final String text;
         private final Runnable action;
         private boolean enabled = true;
+        private boolean checked;
         private boolean hover;
 
         MenuRow(String text, Runnable action) {
@@ -193,6 +452,11 @@ public class myActionBar extends JPanel {
             });
         }
 
+        void setChecked(boolean checked) {
+            this.checked = checked;
+            repaint();
+        }
+
         @Override
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
@@ -207,8 +471,9 @@ public class myActionBar extends JPanel {
 
         @Override
         public Dimension getPreferredSize() {
+            if (!isVisible()) return new Dimension(0, 0);
             FontMetrics fm = getFontMetrics(getFont());
-            int w = fm.stringWidth(text) + MENU_PADDING_LEFT * 2;
+            int w = fm.stringWidth(text) + MENU_PADDING_LEFT * 2 + MENU_CHECK_WIDTH;
             return new Dimension(Math.max(w, MENU_MIN_WIDTH), MENU_ROW_HEIGHT);
         }
 
@@ -222,7 +487,11 @@ public class myActionBar extends JPanel {
             g2.setFont(getFont());
             FontMetrics fm = g2.getFontMetrics();
             int baseline = (getHeight() + fm.getAscent() - fm.getDescent()) / 2;
-            g2.drawString(text, MENU_PADDING_LEFT, baseline);
+            if (checked) {
+                // 原版 Holo 菜单勾选标记（✓）
+                g2.drawString("\u2713", MENU_PADDING_LEFT, baseline);
+            }
+            g2.drawString(text, MENU_PADDING_LEFT + MENU_CHECK_WIDTH, baseline);
             g2.dispose();
         }
     }
