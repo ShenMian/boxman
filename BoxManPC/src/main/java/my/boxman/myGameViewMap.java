@@ -17,8 +17,41 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.LinkedList;
+import java.util.Locale;
 
 public class myGameViewMap extends JPanel implements MouseListener, MouseMotionListener, MouseWheelListener {
+
+    /**
+     * 原版参考机（截图 1260×2844 px）的 density。
+     *
+     * <p>原版 {@code onDraw()} 里有个别常量是按「设备像素」写的（时间文本的 x=10、
+     * baseline 偏移 +30、描边 3px），而不是 dp。PC 端 1dp = 1px，直接照抄会让这些量
+     * 放大 3.4 倍，因此用本常量把它们还原成 dp。
+     */
+    private static final float REF_DENSITY = 3.4f;
+
+    /** 把原版代码里的「设备像素」常量换算成 PC 端的 dp 值（1dp = 1px）。 */
+    private static int refPx(int px) {
+        return Math.round(px / REF_DENSITY);
+    }
+
+    /**
+     * 复刻原版「把 drawable 拉伸到目标像素尺寸再绘制」的做法。
+     *
+     * <p>原版是 {@code Bitmap.createBitmap(w, h) + drawable.setBounds(0,0,w,h) + draw()}
+     * （见 {@code myGameViewMap.Init()}），所以上一关/下一关按钮最终是
+     * {@code m_nArenaTop*4/3 × m_nArenaTop} 这么大；PC 的 {@code ResourceLoader} 只给原始
+     * PNG（prebtn 只有 32×24），必须自己缩放，否则按钮会小一大圈。
+     */
+    private static BufferedImage scaleBitmap(BufferedImage src, int w, int h) {
+        if (src == null || w <= 0 || h <= 0) return src;
+        BufferedImage dst = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = dst.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.drawImage(src, 0, 0, w, h, null);
+        g.dispose();
+        return dst;
+    }
 
     public int d_Moves;  //动画时，移动步数
     public int m_iR, m_iC;  //单击的节点坐标
@@ -148,15 +181,15 @@ public class myGameViewMap extends JPanel implements MouseListener, MouseMotionL
         ss = sp2px(myMaps.ctxDealFile, 16);
         m_rRecording.set(0, m_nArenaTop+8, ss*4+ss/2, m_nArenaTop+ss+ss/2+8); //关闭“录制模式的区域
 
-        bitPre = ResourceLoader.getDrawable("prebtn");
-        bitNext = ResourceLoader.getDrawable("nextbtn");
+        bitPre = scaleBitmap(ResourceLoader.getDrawable("prebtn"), m_nArenaTop * 4 / 3, m_nArenaTop);
+        bitNext = scaleBitmap(ResourceLoader.getDrawable("nextbtn"), m_nArenaTop * 4 / 3, m_nArenaTop);
 
         m_rUnDo = new Rect();
         m_rReDo = new Rect();
         m_rUnDo.set(m_nArenaTop, myMaps.m_nWinHeight-m_nArenaTop*3, m_nArenaTop*3, myMaps.m_nWinHeight-m_nArenaTop); //UnDo
         m_rReDo.set(m_rUnDo.right+m_nArenaTop, m_rUnDo.top, m_rUnDo.right+m_nArenaTop*3, m_rUnDo.bottom); //ReDo
-        bitUnDo = ResourceLoader.getDrawable("undobtn");
-        bitReDo = ResourceLoader.getDrawable("redobtn");
+        bitUnDo = scaleBitmap(ResourceLoader.getDrawable("undobtn"), m_nArenaTop * 2, m_nArenaTop * 2);
+        bitReDo = scaleBitmap(ResourceLoader.getDrawable("redobtn"), m_nArenaTop * 2, m_nArenaTop * 2);
 
         bitInvalid = ResourceLoader.getDrawable("defbit");
 
@@ -1071,7 +1104,10 @@ public class myGameViewMap extends JPanel implements MouseListener, MouseMotionL
         if (myMaps.curMap == null) return;
 
         // 显示背景色或背景图片
-        int bkColor = (myMaps.m_Sets[4] != 0) ? myMaps.m_Sets[4] : 0xFFFFFFFF;
+        // 原版只做 setBackgroundColor(myMaps.m_Sets[4])：m_Sets[4] 默认 0（全透明），
+        // 于是透出外层 LinearLayout 的 android:background="#FF000000" —— 原版游戏区默认底色是「黑」。
+        // 因此这里把 0 解析成黑色，而不是白色。
+        int bkColor = (myMaps.m_Sets[4] != 0) ? myMaps.m_Sets[4] : 0xFF000000;
         if (myMaps.bk_Pic == null || myMaps.bk_Pic.length() <= 0 || myMaps.bk_Pic.equals("使用背景色")) {
             setBackgroundColor(bkColor);  //设置背景色
             canvas.drawColor(bkColor);
@@ -1846,18 +1882,22 @@ public class myGameViewMap extends JPanel implements MouseListener, MouseMotionL
         // 在背景上显示当前时间
         if (myMaps.m_Sets[25] == 1) {
             Date dt = new Date();
-            SimpleDateFormat sdf = new SimpleDateFormat("HH:mm E");
+            // 原版运行在中文系统上，"E" 输出「周一」这种中文简写；PC 端显式锁定中文，
+            // 否则会跟着 JVM 默认 locale 变成 "Mon"/"Thu"。
+            SimpleDateFormat sdf = new SimpleDateFormat("HH:mm E", Locale.CHINA);
             String str_time = sdf.format(dt);
 
             myPaint.setStyle(Paint.Style.FILL_AND_STROKE);
             ss = sp2px(myMaps.ctxDealFile, 30);
             myPaint.setTextSize(ss);
-            myPaint.setStrokeWidth(3);
+            // 原版这里的 x=10、baseline 偏移 +30、描边 3 都是设备像素（非 dp），
+            // 经 refPx() 换算后才与原版截图的位置/粗细一致。
+            myPaint.setStrokeWidth(refPx(3));
             myPaint.setARGB(255, 0, 0, 0);
-            canvas.drawText(str_time, 10, m_nArenaTop + ss + 30, myPaint);
+            canvas.drawText(str_time, refPx(10), m_nArenaTop + ss + refPx(30), myPaint);
             myPaint.setStrokeWidth(1);
             myPaint.setARGB(255, 255, 255, 255);
-            canvas.drawText(str_time, 10, m_nArenaTop + ss + 30, myPaint);
+            canvas.drawText(str_time, refPx(10), m_nArenaTop + ss + refPx(30), myPaint);
         }
 
         ss = sp2px(myMaps.ctxDealFile, 16);

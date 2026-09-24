@@ -8,6 +8,16 @@ import java.util.Deque;
 
 public class Canvas {
     private Graphics2D g2d;
+    /**
+     * {@code setGraphics()} 时 Graphics2D 自带的「设备变换」。
+     *
+     * <p>Android 的 {@code Canvas} 基础矩阵恒为单位阵，所以 {@code setMatrix()} 直接
+     * 替换整个矩阵是安全的。PC 上则不然：Swing 在 HiDPI 屏幕（如 Windows 150% 缩放）
+     * 会给组件的 {@code Graphics2D} 叠加一个 1.5 的设备缩放。若 {@code setMatrix()}
+     * 直接 {@code setTransform()} 覆盖，这个设备缩放就被抹掉，
+     * 于是地图/关卡会按 1/1.5 绘制（离屏渲染走 BufferedImage，矩阵是单位阵，因此看不出来）。
+     */
+    private AffineTransform baseTransform = new AffineTransform();
     private final Deque<AffineTransform> transformStack = new ArrayDeque<>();
     private final Deque<Paint> paintStack = new ArrayDeque<>();
 
@@ -24,6 +34,7 @@ public class Canvas {
 
     public void setGraphics(Graphics2D g) {
         this.g2d = g;
+        this.baseTransform = (g != null) ? g.getTransform() : new AffineTransform();
         transformStack.clear();
         paintStack.clear();
     }
@@ -61,7 +72,11 @@ public class Canvas {
 
     public void setMatrix(Matrix matrix) {
         if (g2d != null && matrix != null) {
-            g2d.setTransform(matrix.toAffineTransform());
+            // 与「设备变换」复合，而不是替换 —— 否则 HiDPI 下的 1.5 缩放会被抹掉。
+            // Android 基础矩阵是单位阵，复合与替换等价，语义不变。
+            AffineTransform t = new AffineTransform(baseTransform);
+            t.concatenate(matrix.toAffineTransform());
+            g2d.setTransform(t);
         }
     }
 

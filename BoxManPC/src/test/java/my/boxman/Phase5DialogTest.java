@@ -134,23 +134,21 @@ public class Phase5DialogTest {
     }
 
     @Test
-    public void testGameViewMenuBar() {
+    public void testGameViewHasNoMenuBar() {
+        // 原版 myGameView 是 FEATURE_NO_TITLE + FLAG_FULLSCREEN：既没有 ActionBar 也没有菜单栏，
+        // 全部菜单项都在底栏「更多」按钮弹出的选项菜单里（res/menu/player.xml）。
+        // 桌面端把原来的 JMenuBar 内容改挂到地图右键菜单，因此这里断言：
+        //   1) 窗口上没有 JMenuBar（否则会多出一行、与原版不符）
+        //   2) 地图右键菜单仍然存在，功能入口没有丢失
         myGameView gv = new myGameView();
-        JMenuBar mb = gv.getJMenuBar();
-        assertNotNull("myGameView should have JMenuBar", mb);
-        assertTrue("Menu bar should contain at least 4 menus", mb.getMenuCount() >= 4);
+        assertNull("myGameView 不应有 JMenuBar（原版无菜单栏）", gv.getJMenuBar());
 
-        boolean hasNav = false, hasAction = false, hasView = false;
-        for (int i = 0; i < mb.getMenuCount(); i++) {
-            JMenu menu = mb.getMenu(i);
-            if (menu != null) {
-                if ("导航".equals(menu.getText())) hasNav = true;
-                if ("操作".equals(menu.getText())) hasAction = true;
-                if ("视图".equals(menu.getText())) hasView = true;
-            }
-        }
-        assertTrue("Must contain 导航 menu", hasNav);
-        assertTrue("Must contain 操作 menu", hasAction);
-        assertTrue("Must contain 视图 menu", hasView);
+        JPopupMenu popup = gv.mMap.getComponentPopupMenu();
+        assertNotNull("地图应保留右键菜单，保证 PC 辅助入口可达", popup);
+        assertTrue("右键菜单应包含原版的 5 个分组（导航/操作/视图/工具/帮助）",
+                popup.getComponentCount() >= 5);
+
+        gv.myStop();
+        gv.dispose();
     }
 }
