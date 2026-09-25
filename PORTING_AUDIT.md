@@ -1,39 +1,65 @@
 # PORTING.md 执行情况审计
 
 审计时间：2026-09-24
+**最近刷新：2026-09-25**（阶段 A~G 全部收口后重跑；见第 0 节与第 7 节）
 审计对象：`PORTING.md`（移植计划书） vs `desktop/`（实际产物）
 审计方式：类清单/行数对比、`res/menu/*.xml` 逐项匹配、`res/layout/*.xml` 控件核对、
-`javac` 全量编译、12 个测试类全量运行、源码逐段对读。
+`javac` 全量编译、全量测试运行、源码逐段对读。
 
 ---
 
 ## 0. 结论摘要
 
-| 维度 | 结论 |
-|------|------|
-| 阶段 0 脚手架 | ✅ 忠实执行 |
-| 阶段 1 平台兼容层 | ✅ 执行，但**留了一个会静默毁库的健壮性 bug** |
-| 阶段 2 核心游戏视图 | ✅ 忠实执行（行数甚至超过原版） |
-| 阶段 3 主界面与导航 | ✅ 已回补（`mySubmit` + `OpenState` 已移植，见第 7 节） |
-| 阶段 4 次要视图 | ⚠️ 窗口都在，但功能普遍缩水 30%~80% |
-| 阶段 5 对话框 | ✅ 执行，且**保真度高于计划书要求** |
-| 阶段 6 菜单系统 | ❌ **执行得最差**，84 个菜单项缺 28~47 项 |
-| 阶段 7 测试与打包 | ✅ 测试全绿（354 用例）；打包（jpackage `packageApp`）已在阶段 F 补上 |
-| 四条移植原则 | ⚠️ 原则 1（布局）大致守住；原则 2/3 有明确违反 |
+> **本节是「当前口径」，随每次收口刷新。** 首次审计（2026-09-24）的逐条结论保留在
+> 第 1~7 节里，各节标题上的状态标记已就地改成现状。
+> **本次刷新：2026-09-25，阶段 A~G 全部收口之后。**
 
-**总体判断：骨架（兼容层 + 渲染 + 主流程）忠实度很高，血肉（菜单、次要视图细节、
-网络写路径、Toast 反馈）大面积缺失，并且存在一处「凭空造数据」和一处「静默毁库」的实质缺陷。**
+### 0.1 逐阶段：审计时 → 现在
 
-> **进度（2026-09-24 起）**：P0 健壮性、`MyToast`、`mySubmit` 链路已按阶段回补完成，
-> 并额外发现修复了「`setJMenuBar` 挖走内容区 23px」的系统性缺陷。
-> 详见 **第 7 节「修复进展」**。
+| 维度 | 审计时（2026-09-24） | 现在（2026-09-25） |
+|------|----------------------|--------------------|
+| 阶段 0 脚手架 | ✅ 忠实执行 | ✅ 不变 |
+| 阶段 1 平台兼容层 | ✅ 执行，但**留了一个会静默毁库的健壮性 bug** | ✅ 缺陷已修（阶段 A） |
+| 阶段 2 核心游戏视图 | ✅ 忠实执行（行数甚至超过原版） | ✅ 不变 |
+| 阶段 3 主界面与导航 | ⚠️ `mySubmit` / `OpenState` 缺失 | ✅ 已回补（阶段 C） |
+| 阶段 4 次要视图 | ⚠️ 窗口都在，但功能普遍缩水 30%~80% | ✅ 已回补（阶段 D-1 / D-2 + G ①③⑤），保留率升到 **46%~119%** |
+| 阶段 5 对话框 | ✅ 执行，且**保真度高于计划书要求** | ✅ 不变 |
+| 阶段 6 菜单系统 | ❌ **执行得最差**，84 项缺 28~47 项 | ✅ **81 项 / strict 缺 0 / loose 缺 0** |
+| 阶段 7 测试与打包 | ⚠️ 测试 57 项全绿，**没有打包** | ✅ 39 类 / 412 用例全绿；jpackage 已补（阶段 F） |
+| 四条移植原则 | ⚠️ 原则 1（布局）大致守住；原则 2/3 有明确违反 | ✅ 原则 2/3 的违反已逐条清掉（见第 2、4 节） |
 
-代码健康度本身是好的：
+### 0.2 总体判断
+
+审计当时的判断是：**「骨架（兼容层 + 渲染 + 主流程）忠实度很高，血肉（菜单、次要视图细节、
+网络写路径、Toast 反馈）大面积缺失，并且存在一处『凭空造数据』和一处『静默毁库』的实质缺陷。」**
+
+**这四条现在都不成立了** —— 两处实质缺陷在阶段 A / D-2 修掉（见 2.1、2.3），
+血肉部分按阶段 A~G 逐条回补。当前口径：
+
+- **功能面**：`PORTING.md` 点名的映射项全部落地；菜单保真度 **81 / strict 缺 0 / loose 缺 0**。
+- **结构面**：全项目**无 `JMenuBar`**、**无裸 `new JPopupMenu()` / `new JMenuItem()`**、
+  **无 `JFileChooser`**、**无 `myActionBar.NO_OP` 占位项** —— 全部由源码扫描式测试锁死。
+- **测试面**：**39 个用例类 / 412 个用例 / 0 失败**，`./gradlew --offline clean test` 全绿。
+
+**仍然存在的偏差**（不掩盖，逐条留在文里）：
+
+| 项 | 说明 |
+|---|---|
+| 窗口尺寸 | 15 个全屏窗口已是 370×780；**11 个 `AlertDialog` 等价物仍是 PC 尺寸（340~540 宽）**，待处理 |
+| 窗口主题 | `myAbout` / `myAbout1` / `myAbout2` / `Help` / `myExport` 没套原版 `Theme.Holo` 的深色 `windowBackground`（纯黑）；`myGameView.showSetup2Dialog` 应改回 `HoloAlertDialog` + 多选列表（阶段 G ⑤ 新开条目） |
+| 兼容性验证 | 只在 **Windows + JDK 26** 上验证过；macOS / Linux / JDK 8·17·21 未测（计划书 7.2） |
+| 行数仍有差距 | `myExport` 46%、`myFindView` 77%、`myEditView` 79%、`myGameView` 82% —— 缩掉的部分已逐项核过，剩下的是 Android 样板（`findViewById` / `AlertDialog` / `Menu`），但**没有再做逐行复核** |
+| 细节口径 | `myActGMView` 按钮行仍用 `4dp` strut 而非原版的 `layout_margin="2dp"`；`myFindView` 相似度闸门分母取源关卡面积、`ARGB_4444` 量化等「照抄原版怪癖」的地方，见各阶段小节 |
+
+> 逐阶段的**证据与改法**在第 1~7 节；阶段 A~G 的收口记录在「阶段 A」…「阶段 G ⑤」各小节。
+
+代码健康度（2026-09-25 实测）：
 
 ```
-主源码 90 个 .java  → javac 零错误（0 error）
-测试源 20 个 .java  → javac 零错误
-测试运行            → 21 个测试类 / 84 个用例 全部通过
+主源码 98 个 .java  → javac 零错误（0 error）
+测试源 39 个 .java  → javac 零错误
+测试运行            → 39 个用例类 / 412 个用例 全部通过
+菜单保真度          → 81 项 / strict 缺 0 / loose 缺 0
 ```
 
 ---
@@ -53,7 +79,7 @@
 | 删除 `service/MyService.java` | PC 侧无 `service/` 包 | ✅ |
 | 验收：jsoko + 纯算法类编译通过 | 全量 javac 通过 | ✅ |
 
-### 阶段 1：平台兼容层 — ✅ 功能到位，⚠️ 有实质缺陷
+### 阶段 1：平台兼容层 — ✅ 功能到位，原 2 处实质缺陷已修（阶段 A，2026-09-24）
 
 计划书点名的产物**全部落地**：
 
@@ -123,6 +149,12 @@ build/test_boxman_phase5nullDataBase/BoxMan.db    size=0          tables=[]
 **这个 bug 在开发机上永远不会暴露**（开发机 `~/.boxman/DataBase/BoxMan.db` 早就存在），
 只有全新安装的用户才会踩到。
 
+> **✅ 已修（阶段 A，2026-09-24）：** 上面两条缺陷都已收口 ——
+> `copyDataBase()` 在 `getResourceAsStream` 返回 null 时**抛异常并删掉半成品文件**，
+> `checkDataBase()` 增加「文件长度 > 0 且 `sqlite_master` 里有表」的判定（0 字节库自愈）；
+> `myMaps.sPath` 已给默认值 `"/"`。回归锁：`Phase7SystemIntegrationTest`（清理污染目录后 4/4 绿）。
+> 缺陷描述保留在此，供理解当初的失效链。
+
 ### 阶段 2：核心游戏视图 — ✅ 忠实
 
 | 文件 | 原版行数 | PC 行数 | 判定 |
@@ -133,14 +165,14 @@ build/test_boxman_phase5nullDataBase/BoxMan.db    size=0          tables=[]
 `Phase2GameViewTest`、`Phase3GameViewSnapshotTest`（含 HiDPI 设备缩放不变量回归）、
 `Phase3NavigationTest` 全绿。`myMaps.java` 1,640 → 1,493。
 
-### 阶段 3：主界面与导航 — ⚠️
+### 阶段 3：主界面与导航 — ✅ 已回补（阶段 C，2026-09-24）
 
 | 计划书要求 | 实际 | 判定 |
 |-----------|------|------|
 | `BoxMan` → 主窗口单例 | `BoxManPC extends JFrame` | ✅ |
 | `myFileExplorerActivity` → 文件选择 | ✅ **全项目已 0 处 `JFileChooser`**（阶段 G ①） | 前两处已在阶段 E 撤掉：`BoxManPC` 的「导入...」走原版 `sel_Set()`，`myGridView` 的文档导入走「导入/」目录列表。最后一处 `myPicListView.browseLocalImage()` 随阶段 G ① 的重写一起删掉 —— 原版根本没有系统文件选择器，「换目录」走的是 ActionBar「位置」→「图片位置」5 项单选 →「修改」→ `myFileExplorerActivity` |
 | `mySubmitList` → 提交列表 | `mySubmitList.java`（754 行，比原版 505 行还厚） | ✅ |
-| **`mySubmit` → `SubmitFrame`** | **不存在** | ❌ |
+| **`mySubmit` → `SubmitFrame`** | `mySubmit.java`（475 行，1:1 移植） | ✅ 阶段 C 已回补（审计时确为缺失，见下） |
 | `Help` → `JEditorPane` | 实际用 `JTextArea`（见第 3 节，原版其实是 `TextView`） | ⚠️ 偏差但更接近原版 |
 
 计划书 3.1 映射表里的类名（`GridViewFrame`/`PicListFrame`/`GameFrame`/`EditFrame`…）
@@ -163,22 +195,28 @@ build/test_boxman_phase5nullDataBase/BoxMan.db    size=0          tables=[]
 `myStateBrow.loadSelected()` 还把 `load_State()` 的返回值丢掉了。
 两处均已修复。
 
-### 阶段 4：次要视图 — ⚠️ 窗口都在，功能缩水明显
+### 阶段 4：次要视图 — ✅ 已回补（阶段 D-1 / D-2 + G ①③⑤，2026-09-25）
+
+> 下表 PC 列已按 2026-09-25 的**磁盘实际行数**刷新（审计当时那版是回补前的旧值）。
 
 | 文件 | 原版 | PC | 保留率 |
 |------|------|-----|-------|
-| `myEditView.java` | 2,407 | 626 | 26% |
-| `myFindView.java` | 692 | 118 | 17% |
-| `myRecogView.java` | 831 | 180 | 22% |
-| `myStateBrow.java` | 1,018 | 1,165 | 114%（阶段 D-1 重写；PC 把原版的匿名内部类展开成具名类，行数不降反升属正常） |
-| `myActGMView.java` | 824 | 749 | 91%（阶段 D-2 重写；阶段 G ⑤ 换 HoloButton 后 749） |
+| `myEditView.java` | 2,407 | 1,904 | 79%（阶段 D-2 重写） |
+| `myFindView.java` | 692 | 532 | 77%（阶段 D-2 重写） |
+| `myRecogView.java` | 831 | 991 | 119%（阶段 D-2 重写） |
+| `myRecogViewMap.java` | 1,047 | 1,171 | 112%（阶段 D-2 重写；原版把算法拆在匿名类里，PC 展开成具名方法） |
+| `myStateBrow.java` | 1,018 | 1,165 | 114%（阶段 D-1 重写；同上） |
+| `myActGMView.java` | 824 | 749 | 91%（阶段 D-2 重写；阶段 G ⑤ 换 HoloButton） |
 | `myExport.java` | 481 | 223 | 46%（阶段 G ⑤ 订正按钮文案 + HoloButton） |
-| `myRecogViewMap.java` | 1,047 | 196 | 19% |
-| `myPicListView.java` | 258 | 131 | 51% |
-| `mySolutionBrow.java` | 304 | 270 ✅ | 89%（阶段 G ③ 整体重做） |
+| `myPicListView.java` | 258 | 291 | 113%（阶段 G ① 重写） |
+| `mySolutionBrow.java` | 304 | 270 | 89%（阶段 G ③ 整体重做） |
+| `myGridView.java` | 1,810 | 1,773 | 98%（阶段 D-2 + G ②④ 补 14 项上下文菜单） |
+| `myGameView.java` | 5,906 | 4,867 | 82%（阶段 D-3 / F / G ④） |
+| `BoxManPC.java`（原版 `BoxMan.java`） | 2,006 | 1,921 | 96%（阶段 G ⑦ 补 10 项上下文菜单） |
 
 （缩水本身可以理解 —— Android 的 `findViewById`/`AlertDialog`/`Menu` 样板占很大比重。
-但下面的逐项核对显示，**缩掉的不只是样板**。）
+下面的逐项核对显示，**缩掉的不只是样板** —— 这正是阶段 D-2 重写 `myRecogView` 时
+把行数从 180 拉到 991、`myRecogViewMap` 从 196 拉到 1,171 的原因。）
 
 #### 4.7 外部求解器（YASS）— ✅ 已收口（阶段 F，2026-09-25）
 
@@ -214,8 +252,9 @@ build/test_boxman_phase5nullDataBase/BoxMan.db    size=0          tables=[]
 > ⚠️ 其中 `DelDialog`（PC 自造的「删除确认 + 是否连同解答与状态一起删」）与
 > `ExportDialog` / `SplitDialog` 一样是 PC 自造物 —— 原版 `myGridView` 的「删除」只是一句
 > `setMessage` 的确认框（`myGridView.java:1484-1492`）。它已随阶段 G ④ 一并删除；
-> 原版真正带「删除答案...」的是 `BoxMan` 的**关卡集**上下文菜单（`BoxMan.java:1450`），
-> 属另一条尚未移植的入口链。
+> 原版真正带「删除答案...」的是 `BoxMan` 的**关卡集**上下文菜单（`BoxMan.java:1450`）。
+> **✅ 阶段 G ⑦ 已回补**：`BoxManPC` 的 10 项关卡集上下文菜单（含 `case 4「删除答案...」`
+> → 异步删 `G_State` 里 `G_Solution = 1` 的记录 + 进度框「答案删除中...」）已 1:1 移植。
 
 未建独立类但功能在别处的：`size_dialog`（并入 `myEditView.showResizeDialog()`）、
 `recog_dialog`、`import_dialog/2/3`（并入 `BoxManPC.importLevelFile()`，见下）。
@@ -247,7 +286,7 @@ myGridView.java       2 处
 这 91 条面向用户的操作反馈（「关卡已保存！」「答案有重复！」「出错了，注释未能保存！」…）
 在 PC 上**全部静默丢弃**。这是用户可感知度最高的缺口之一。
 
-### 阶段 6：菜单系统 — ⚠️ 部分回补（阶段 D 进行中）
+### 阶段 6：菜单系统 — ✅ 已收口（81 / strict 缺 0 / loose 缺 0，2026-09-25）
 
 13 个 `res/menu/*.xml`、**81 个菜单项**。
 
@@ -272,14 +311,14 @@ myGridView.java       2 处
 | `myExport` | `export.xml` | 1 | **1** | ✅ |
 | `myGameView` | `player.xml` | 13 | **13** | ✅ 阶段 D-3 补齐 12 项，阶段 F 补上最后的 `YASS求解`（新增 `导出...`/`导入...`/`打开状态...`/`操作说明`，并把 `关于` 改回 `myAbout2`） |
 | `myEditView` | `edit.xml` | 13 | **13** | ✅ 阶段 D-2 已补齐 |
-| `myPicListView` | `piclist.xml` | 1 | 0 | `位置` |
-| `myFileExplorerActivity` | `filelist.xml` | 2 | 2 ✅ | `上一级`、`完成`（阶段 G ① 已移植，224 → 331 行） |
-| `(未使用)` | `gif.xml` | 1 | 0 | `制作`（PC 对话框按钮叫「确定」） |
-| | | **81** | **77** | **4**（含改名误报，需人工过） |
+| `myPicListView` | `piclist.xml` | 1 | **1** | ✅ 阶段 G ① 重写后补上 ActionBar「位置」 |
+| `myFileExplorerActivity` | `filelist.xml` | 2 | **2** | ✅ 阶段 G ① 新移植（224 → 331 行） |
+| `(孤儿资源)` | `gif.xml` | 1 | **1** | ✅ 阶段 G ① —— ⚠️ 该菜单**从未被 inflate**（`grep -rn "R.menu.gif"` 零命中），真正的「制作」是 `myExport.java:423` 的 PositiveButton |
+| | | **81** | **81** | **0** |
 
-> **进展**：strict OK 从 **41 → 64 → 72 → 76 → 77**，`loose 真缺` 从 40 降到 **4**。
-> 阶段 D-1/D-2/D-3/F 涉及的窗口（`myStateBrow` / `myActGMView` / `myFindView` / `myRecogView` /
-> `myEditView` / `myGridView` / `myGameView`）已全部补齐。
+> **进展**：strict OK 从 **41 → 64 → 72 → 76 → 77 → 81**，`loose 真缺` 从 40 一路降到 **0**。
+> 阶段 D-1/D-2/D-3/F/G 涉及的窗口（`myStateBrow` / `myActGMView` / `myFindView` / `myRecogView` /
+> `myEditView` / `myGridView` / `myGameView` / `myPicListView` / `myFileExplorerActivity`）已全部补齐。
 >
 > ⚠️ **2026-09-25 阶段 E 修正：`loose 真缺` 由 4 改为 5。**
 > 删掉 PC 自造的 `SplitDialog.java` 之后，`filelist.xml 完成` 从「`~`（他处出现过该字符串）」
@@ -299,13 +338,13 @@ myGridView.java       2 处
 > 底栏按钮弹出的选项菜单里，**不要**给它们加 `myActionBar`。
 > 判据见第 3 节「PORTING.md 自身的错误」与 `android-ui-to-swing-fidelity` 技能。
 
-**loose 真缺 4 项**（全项目任何 PC 源码里都搜不到该标题字符串）：
+**loose 真缺 —— 审计当时是 4 项，现已全部收口（0 项）**：
 
 ```
-filelist.xml 上一级
-filelist.xml 完成
-gif.xml      制作
-piclist.xml  位置
+filelist.xml 上一级     ✅ 阶段 G ① 新移植 myFileExplorerActivity
+filelist.xml 完成       ✅ 同上
+gif.xml      制作       ✅ 阶段 G ① myGifMakeDialog 按钮文案改回「制作」
+piclist.xml  位置       ✅ 阶段 G ① myPicListView 重写后补上 ActionBar「位置」
 ```
 
 > ~~这 4 项**全部落在未移植的类/功能上**：`myFileExplorerActivity`（2 项）、
@@ -315,9 +354,10 @@ piclist.xml  位置
 > （`player.xml YASS求解` 已在阶段 F 收口，2026-09-25。）
 
 
-### 阶段 7：测试与打包 — ⚠️
+### 阶段 7：测试与打包 — ✅
 
-**测试：做得扎实且全绿**（干净环境 + 资源目录在 classpath）：
+**测试：做得扎实且全绿**（干净环境 + 资源目录在 classpath）。
+审计当时的 12 个类 / 57 项是下面这张表：
 
 ```
 Phase1CompatTest            OK (6 tests)
@@ -336,21 +376,27 @@ WindowSizingTest            OK (4 tests)
 合计                        57 tests, 0 failures
 ```
 
+**现状（2026-09-25）：39 个用例类 / 412 个用例 / 0 失败**，
+`./gradlew --offline clean test` → `BUILD SUCCESSFUL`。
+审计后新增的 27 个类逐项列在第 7 节的「当前测试基线」里。
+
 **打包：已做（阶段 F，2026-09-25）。** `desktop/build.gradle` 新增 `packageApp` 任务
 （`Exec` + `jpackage`，默认 `app-image`，可用 `-PjpackageType=msi|dmg|deb` 换安装包格式）。
 实测产出的 `build/jpackage/BoxManPC/BoxManPC.exe` 能正常启动
 （FlatLaf 原生库、sqlite-jdbc、Swing 界面全部就绪）。三个踩过的坑见第 7 节阶段 F。
 
 **兼容性测试**（7.2 的 macOS / Linux / JDK 8/17/21）：未做（仅在 Windows + JDK 26 上验证）。
-（当前开发机只有 JDK 26；且仓库自带的 Gradle wrapper 是 **6.5**，
-在 JDK 26 下直接 `./gradlew` 会以
-`Unsupported class file major version 70` 失败 —— 构建链本身需要修。）
+（当前开发机只有 JDK 26。）
+> ✅ **构建链问题已修（阶段 A，2026-09-24）**：仓库根/`android/` 那份 Gradle wrapper 是 **6.5**，
+> 在 JDK 26 下会以 `Unsupported class file major version 70` 失败；已在 `desktop/` 生成**独立 wrapper（9.7.1）**，
+> `cd desktop && ./gradlew test` 可正常跑。**跨平台/跨 JDK 的兼容性验证本身仍未做**，见第 0 节「仍然存在的偏差」。
 
 ---
 
-## 2. 逻辑被简化 / 硬编码（比行数缩水更严重）
+## 2. 逻辑被简化 / 硬编码（比行数缩水更严重）— ✅ 5 项全部已修（2026-09-25）
 
-这几处不是「样板被删」，而是**业务行为被改**：
+这几处不是「样板被删」，而是**业务行为被改**。
+下面 5 条的**原始判定保留**（便于理解缺口性质），每条标题后已标出修复阶段：
 
 ### 2.1 `myEditView.doSubmit()` 凭空造作者名 — ✅ 2026-09-25 已修（见阶段 D-2）
 
@@ -463,10 +509,14 @@ ActionBar `#0083C5`、列表背景 `#004040`…），
 | 位置 | 原版 | PC |
 |------|------|-----|
 | `myStateBrow` 排序 | **点分组标题循环切换**（`s_sort[my_Sort]` 拼在标题上） | ✅ 阶段 D-1 已改回右键分组标题循环切换，自造的「排序方式」菜单已删 |
-| `myRecogView` 识别按钮标签 | `recog_view.xml` 是 `- # $ * . @` 符号 | 改成「地板/墙壁/箱子/目标/标箱/人」 |
-| `myRecogView` 菜单 | `？/悔/度/减/增/识别` | 自造「加载图片文件.../发送到关卡编辑器/清空所有识别元素」 |
-| `myEditView` 菜单 | 无「保存」项（只有底栏 `bt_Save`） | 新增菜单项「保存」 |
+| `myRecogView` 识别按钮标签 | `recog_view.xml` 是 `- # $ * . @` 符号 | ✅ 阶段 D-2 已改回符号（`new FlatButton("-", 29, 29, true)` 等 6 个） |
+| `myRecogView` 菜单 | `？/悔/度/减/增/识别` | ✅ 阶段 D-2 已改回原版 6 项（全部 `showAsAction="always"`，无溢出菜单） |
+| `myEditView` 菜单 | 无「保存」项（只有底栏 `bt_Save`） | ✅ 阶段 D-2 已删掉自造的菜单项，只剩底栏 `bt_Save` |
 | `mySolutionBrow` | 上下文菜单 + 覆写对话框 | ✅ 阶段 G ③：改回 Activity + ActionBar + 「答案」组头；删自造按钮栏与 `JOptionPane` |
+
+**✅ 2026-09-25：本节的 5 条已全部消除。** 由 `Phase20MenuCarrierConventionTest` /
+`Phase16RecogViewTest` / `Phase27SolutionBrowTest` 等用例锁住，防止回退。
+（阶段 G ⑤ 顺带删掉了 `myExport` 的「执行导出」这个自造文案，改回原版的「导出」。）
 
 ---
 
@@ -491,19 +541,27 @@ ActionBar `#0083C5`、列表背景 `#004040`…），
 5. ✅ 移植 `mySubmit`（475 行）→ 补齐「提交答案」链路，`myStateBrow` 加回菜单项。
    顺带补上漏掉的 `myGameView.OpenState()` 与 `myStateBrow.loadSelected()` 赋值。
 6. ✅ 实现 `MyToast` 的浮层版本（**91 处调用**在等它）。
-7. ⬜ 补 YASS 外部求解器接入（`ProcessBuilder`），或明确标注为「PC 不支持」并同步改文档。
+7. ✅ 接入 YASS 求解（阶段 F）。**方式与计划书不同**：原版走 Android **跨应用 Intent**
+   （`nl.joriswit.sokosolver.SOLVE`），不是 `ProcessBuilder`；PC 等价于「真机未装求解器」，
+   真逻辑保留、最后一步抛出落到同一个 catch 分支。详见阶段 F 与 4.7。
 
 **P2 — 保真度回补**
 
-8. 🟡 **按第 6 节表格逐窗口补齐菜单项。**
+8. ✅ **按第 6 节表格逐窗口补齐菜单项 —— 已 81 / strict 缺 0 / loose 缺 0。**
    - ✅ `myStateBrow`（阶段 D-1）：`state.xml` 4 项 + 上下文 12 项 + ExpandableListView 结构全部回补。
-   - ⬜ `myGridView`（`╋`/`清空列表`/`批量删除...` 三项仍置灰）、`myRecogView`（原版 6 项全缺）。
-   - ⬜ 把剩余 6 个窗口自造的 `JMenuBar` 换成 `myActionBar` + `res/menu/*.xml`。
+   - ✅ `myGridView`（阶段 D-2 + G ②④）：`levels.xml` 13 项 + 关卡项上下文菜单 **14 项** + 可见性矩阵。
+   - ✅ `myRecogView`（阶段 D-2）：原版 6 项全部补齐。
+   - ✅ 其余窗口自造的 `JMenuBar` 已全部换成 `myActionBar` + `res/menu/*.xml`（全项目 0 处 `JMenuBar`）。
    - ✅ 基础设施：抽出 `compat/HoloPopupMenu`（ActionBar 溢出菜单与上下文菜单共用同一套 Holo 渲染）。
-9. ⬜ 修 `myEditView` 的三处简化（提交选择框 / 扩充-消减 / 标准化）。
-10. ⬜ 恢复导入的三种方式与编码选择。
-11. ⬜ **补自动图像识别**（原版 `myRecogViewMap` 的逐像素样本匹配，见 2.5）。
-12. ⬜ **补关卡库级相似度搜索**（原版 `myFindView` 的打分排序，见 2.5）。
+   - ✅ 阶段 G ① 补上最后 4 项：`filelist.xml`（新移植 `myFileExplorerActivity`）、`piclist.xml`、`gif.xml`。
+9. ✅ 修 `myEditView` 的三处简化（提交选择框 / 扩充-消减 / 标准化）—— 阶段 D-2，见 2.1~2.3。
+10. ✅ 恢复导入的三种方式与编码选择 —— 阶段 E，见 2.4。
+11. ✅ **补自动图像识别**（原版 `myRecogViewMap` 的逐像素样本匹配）—— 阶段 D-2；PC 现 1,171 行，见 2.5。
+12. ✅ **补关卡库级相似度搜索**（原版 `myFindView` 的打分排序）—— 阶段 D-2 + G ②④
+    （新增 `myFindFragment` 相似度引擎 + `FindDialog` 重写），见 2.5。
+
+> **✅ 2026-09-25：P0~P2 全部完成，本节已无未开始项。**
+> 阶段 G ⑤ 新开的一条（窗口主题 / 对话框载体）记在第 0 节的「仍然存在的偏差」里。
 
 ---
 
@@ -731,15 +789,18 @@ myRecogView   pre: 370×780   post: 370×780   menubar=370×23   outer=384×840
 PC 自造的 `switchLevel()/rotateLevel()/toggleViewMode()/setLevels()` 与「默认显示源关卡」，
 已改为按原版语义断言。
 
-**仍然存在的偏差（留给后续阶段）**
+**当时的偏差（✅ 均已在阶段 G ②④ 收口）**
 
 - 原版的入口是 `myGridView` 的「查找相似关卡」→ `myFindFragment`（相似度搜索对话框）→
-  由它把源关卡写进 `myMaps.oldMap`，再启动 `myFindView`。`myFindFragment` 属于
-  已知未移植清单，PC 侧目前从 `myGameView` 的「工具」菜单直接开 `myFindView`，
-  `oldMap` 为 `null` 时兜底成「自己跟自己比」。**这条入口链要等 `myFindFragment` 移植后一起收口。**
-- `myGameView` 的「工具」菜单（关卡编辑器 / 相似关卡对比 / 关卡图像识别）在
-  `res/menu/player.xml` 里**不存在**，是 PC 自造项（违反「不添加 PC 专属功能」）。
-  但删掉它目前就没有入口，需要先补上原版的入口链，见上一条。
+  由它把源关卡写进 `myMaps.oldMap`，再启动 `myFindView`。
+  **✅ 阶段 G ②④ 已移植 `myFindFragment`**（相似度引擎）并重写 `FindDialog`，
+  入口链回到原版：`myGridView` 上下文菜单「查找相似关卡」→ `FindDialog` → 写 `oldMap` → `myFindView`。
+- ~~`myGameView` 的「工具」菜单（关卡编辑器 / 相似关卡对比 / 关卡图像识别）在
+  `res/menu/player.xml` 里不存在，是 PC 自造项。~~
+  **✅ 阶段 G ④ 已删除**：`myGameView.installMapPopupMenu()` 整份 PC 自造右键菜单（导航/操作/视图/工具/帮助
+  五组）连同其「工具」组一并移除；原先靠它兜底的入口都已有原版路径
+  （关卡编辑器 → `myGridView` 上下文菜单；相似关卡对比 → `myGridView`「查找相似关卡」→ `FindDialog`；
+  图像识别 → `BoxMan` 菜单「图像识别」→ `myPicListView` → `myRecogView`）。
 - ~~`myActGMView` / `myFindView` 里的普通按钮仍是 Swing 默认外观，
   与原版 Holo 深色按钮（深灰底 + 浅边框）不一致。这是全项目性的问题，
   待一个「统一按钮样式」的阶段一并处理。~~
