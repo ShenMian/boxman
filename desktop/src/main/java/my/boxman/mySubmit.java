@@ -1,5 +1,6 @@
 package my.boxman;
 
+import my.boxman.compat.HoloButton;
 import my.boxman.compat.HoloContent;
 import my.boxman.compat.HoloMessageDialog;
 import my.boxman.compat.UiWindow;
@@ -381,9 +382,11 @@ public class mySubmit extends JFrame {
         form.add(HoloContent.band(HoloContent.BAND, 16));
 
         // 按钮行：返回 + 50dp + 提交 + 30dp，整体右对齐
-        btCancel = new JButton("返回");
+        // 原版 submit.xml 的两个 <Button> 是主题默认的 Widget.Holo.Button
+        // （textSize=10pt、paddingLeft=10dp、paddingTop/Bottom=5dp）
+        btCancel = HoloButton.create("返回", BUTTON_TEXT_SIZE, BUTTON_PADDING);
         btCancel.addActionListener(e -> dispose());
-        btOK = new JButton("提交");
+        btOK = HoloButton.create("提交", BUTTON_TEXT_SIZE, BUTTON_PADDING);
         btOK.addActionListener(e -> onOk());
 
         JPanel btnRow = new JPanel();
@@ -392,8 +395,6 @@ public class mySubmit extends JFrame {
         btnRow.setOpaque(true);
         btnRow.setAlignmentX(Component.LEFT_ALIGNMENT);
         btnRow.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, ROW_RIGHT_PAD));
-        styleButton(btCancel);
-        styleButton(btOK);
         btnRow.add(Box.createHorizontalGlue());
         btnRow.add(btCancel);
         btnRow.add(Box.createRigidArea(new Dimension(50, 0)));
@@ -426,11 +427,11 @@ public class mySubmit extends JFrame {
         return p;
     }
 
-    /** 原版按钮：{@code textSize=10pt}、{@code paddingLeft=10dp}、{@code paddingTop/Bottom=5dp}。 */
-    private static void styleButton(JButton b) {
-        b.setFont(new Font("Microsoft YaHei", Font.PLAIN, BUTTON_TEXT_SIZE));
-        b.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-    }
+    /**
+     * 原版按钮：{@code textSize=10pt}、{@code paddingLeft=10dp}、{@code paddingTop/Bottom=5dp}。
+     * 现在由 {@link HoloButton#create(String, int, Insets)} 一并处理（含 Holo 深色底图）。
+     */
+    static final Insets BUTTON_PADDING = new Insets(5, 10, 5, 10);
 
     /** 原版 {@code getData(m_menu)}：把国家表取成显示名列表。 */
     static List<String> countryNames() {

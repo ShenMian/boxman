@@ -357,14 +357,17 @@ public final class HoloContent {
         return r;
     }
 
-    /** 深色主题按钮（对话框内部用的普通按钮，非 HoloAlertDialog 底栏按钮）。 */
+    /**
+     * 深色主题按钮（对话框内容区里的普通按钮）。
+     *
+     * <p>原版这些位置就是布局里的 {@code <Button>}，走主题默认的
+     * {@code Widget.Holo.Button}（{@code btn_default_holo_dark}），所以直接复用
+     * {@link HoloButton}。⚠️ {@code HoloAlertDialog} 的**底栏**按钮不是这种：
+     * 那是 {@code Widget.Holo.Button.Borderless}（{@code selectableItemBackground}），
+     * 无边框、只有按压/聚焦的水波底色，见 {@code HoloAlertDialog.addButton}。
+     */
     public static JButton button(String text) {
-        JButton b = new JButton(text);
-        b.setFont(font(Font.PLAIN));
-        b.setForeground(TEXT);
-        b.setBackground(FIELD_BG);
-        b.setFocusPainted(false);
-        return b;
+        return new HoloButton(text);
     }
 
     /** 深色配色的微调框（原版这些位置是数字 {@code EditText}）。 */

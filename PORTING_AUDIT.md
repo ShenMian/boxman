@@ -171,11 +171,11 @@ build/test_boxman_phase5nullDataBase/BoxMan.db    size=0          tables=[]
 | `myFindView.java` | 692 | 118 | 17% |
 | `myRecogView.java` | 831 | 180 | 22% |
 | `myStateBrow.java` | 1,018 | 1,165 | 114%（阶段 D-1 重写；PC 把原版的匿名内部类展开成具名类，行数不降反升属正常） |
-| `myActGMView.java` | 824 | 244 | 30% |
-| `myExport.java` | 481 | 198 | 41% |
+| `myActGMView.java` | 824 | 749 | 91%（阶段 D-2 重写；阶段 G ⑤ 换 HoloButton 后 749） |
+| `myExport.java` | 481 | 223 | 46%（阶段 G ⑤ 订正按钮文案 + HoloButton） |
 | `myRecogViewMap.java` | 1,047 | 196 | 19% |
 | `myPicListView.java` | 258 | 131 | 51% |
-| `mySolutionBrow.java` | 304 | 103 | 34% |
+| `mySolutionBrow.java` | 304 | 270 ✅ | 89%（阶段 G ③ 整体重做） |
 
 （缩水本身可以理解 —— Android 的 `findViewById`/`AlertDialog`/`Menu` 样板占很大比重。
 但下面的逐项核对显示，**缩掉的不只是样板**。）
@@ -466,7 +466,7 @@ ActionBar `#0083C5`、列表背景 `#004040`…），
 | `myRecogView` 识别按钮标签 | `recog_view.xml` 是 `- # $ * . @` 符号 | 改成「地板/墙壁/箱子/目标/标箱/人」 |
 | `myRecogView` 菜单 | `？/悔/度/减/增/识别` | 自造「加载图片文件.../发送到关卡编辑器/清空所有识别元素」 |
 | `myEditView` 菜单 | 无「保存」项（只有底栏 `bt_Save`） | 新增菜单项「保存」 |
-| `mySolutionBrow` | 上下文菜单 + 覆写对话框 | 结构改为菜单 + 两个按钮 |
+| `mySolutionBrow` | 上下文菜单 + 覆写对话框 | ✅ 阶段 G ③：改回 Activity + ActionBar + 「答案」组头；删自造按钮栏与 `JOptionPane` |
 
 ---
 
@@ -740,9 +740,12 @@ PC 自造的 `switchLevel()/rotateLevel()/toggleViewMode()/setLevels()` 与「�
 - `myGameView` 的「工具」菜单（关卡编辑器 / 相似关卡对比 / 关卡图像识别）在
   `res/menu/player.xml` 里**不存在**，是 PC 自造项（违反「不添加 PC 专属功能」）。
   但删掉它目前就没有入口，需要先补上原版的入口链，见上一条。
-- `myActGMView` / `myFindView` 里的普通按钮仍是 Swing 默认外观，
+- ~~`myActGMView` / `myFindView` 里的普通按钮仍是 Swing 默认外观，
   与原版 Holo 深色按钮（深灰底 + 浅边框）不一致。这是全项目性的问题，
-  待一个「统一按钮样式」的阶段一并处理。
+  待一个「统一按钮样式」的阶段一并处理。~~
+  **✅ 阶段 G ⑤ 已处理**：`myActGMView` 的 5 个按钮换成 `compat/HoloButton`。
+  ⚠️ 原审计写的 `myFindView` 有误 —— 原版 `find_view.xml` 与 PC `myFindView` 里
+  **都没有任何按钮**（已核实）。
 
 #### `myRecogView` + `myRecogViewMap`（「关卡图像识别」）：原版 831 + 1047 行 / 改前 183 + 196 行
 
@@ -1000,9 +1003,10 @@ PC 侧改前用的是裸 `JPopupMenu + JMenuItem`：样式与 ActionBar 溢出�
 ### 当前测试基线
 
 ```
-37 个用例类 / 379 个测试用例  全部通过
+39 个用例类 / 412 个测试用例  全部通过
 （阶段 E 后：32 / 242 → 阶段 F 后：32 / 251 → 阶段 G ②④ 后：34 / 291
-  → 阶段 G ⑥ 后：35 / 307 → 阶段 G ⑦ 后：36 / 354 → 阶段 G ① 后：37 / 379）
+  → 阶段 G ⑥ 后：35 / 307 → 阶段 G ⑦ 后：36 / 354 → 阶段 G ① 后：37 / 379
+  → 阶段 G ③ 后：38 / 392 → 阶段 G ⑤ 后：39 / 412）
 ./gradlew --offline clean test   BUILD SUCCESSFUL
 ```
 
@@ -1014,8 +1018,11 @@ PC 侧改前用的是裸 `JPopupMenu + JMenuItem`：样式与 ActionBar 溢出�
 `Phase23FindFragmentTest`(12，阶段 G ②)、
 `Phase24EditUndoRedoTest`(16，阶段 G ⑥)、
 `Phase25BoxManContextMenuTest`(47，阶段 G ⑦)、
-`Phase26PicListAndFileExplorerTest`(25，阶段 G ①)。
-新增快照工具 `RecogSnapshotTool`；`DialogSnapshotTool` 增加 `d12-Import` / `d13-Export`。
+`Phase26PicListAndFileExplorerTest`(25，阶段 G ①)、
+`Phase27SolutionBrowTest`(14，阶段 G ③)、
+`Phase28HoloButtonTest`(20，阶段 G ⑤)。
+新增快照工具 `RecogSnapshotTool`；`DialogSnapshotTool` 增加 `d12-Import` / `d13-Export`；
+`WindowSnapshotTool` 增加 `17-myExport`（此前漏了这个窗口）。
 `Phase4BatchBTest` / `Phase7SystemIntegrationTest` 的 `myFindView`、`myRecogView` 断言
 均已按原版语义改写；阶段 E 删掉 `SplitDialog` / `ExportDialog` 后，
 `Phase4SecondaryViewTest.testSplitDialogWorker` 与 `Phase5DialogTest.testExportDialog`
@@ -1078,11 +1085,19 @@ PC 侧改前用的是裸 `JPopupMenu + JMenuItem`：样式与 ActionBar 溢出�
      孤儿资源）。**至此菜单保真度 81 / strict 缺 0 / loose 缺 0。** 详见「阶段 G ①」小节。
   2. ✅ **已完成（2026-09-25）**：`myGridView` 的 14 项上下文菜单 + `myFindFragment`
      相似度搜索引擎（详见「阶段 G ②④」小节）；
-  3. **`mySolutionBrow` 整体重做**：原版是 `ExpandableListView` + ActionBar 的 Activity，
-     PC 现在是自造的 `JList` + 底部按钮栏；
+  3. ✅ **已完成（2026-09-25）**：**`mySolutionBrow` 整体重做** —— 原版是
+     `ExpandableListView` + ActionBar 的 Activity（304 行），PC 此前是自造的**模态
+     `JDialog`** + 底部按钮栏（107 行）；现改为 `JFrame` + `myActionBar` +
+     「答案」组头 + 子项列表（248 行），并删掉 `JOptionPane` 与自造按钮。
+     详见「阶段 G ③」小节。
   4. ✅ **已完成（2026-09-25）**：删除 `myGameView.installMapPopupMenu()`
      （原版 `myGameView` / `myGameViewMap` 无任何上下文菜单）+ 顺带删掉 PC 自造的 `DelDialog`；
-  5. 统一普通按钮的 Holo 深色样式。
+  5. ✅ **已完成（2026-09-25）**：统一普通按钮的 Holo 深色样式 —— 新增
+     `compat/HoloButton`（按 AOSP `btn_default_holo_dark` 9-patch 实测像素自绘：
+     正常 / 按下 / 禁用三态 + 透明外缘 + 顶棱 + 暗底缘 + 1px 描边），
+     替换 `myActGMView`（5 个）/ `mySubmit`（2 个）/ `myExport`（1 个 + 自造「关闭」），
+     顺带订正 `myActGMView` 按钮高度 36dp → 原版的 **48dp**、
+     `myExport` 按钮文案「执行导出」→ 原版的 **「导出」**。详见「阶段 G ⑤」小节。
   6. ✅ **已完成（2026-09-25）**：核 `myEditView` 撤销栈的 `Act(...)` 语义 ——
      `myUnDo()`/`myReDo()` 补上按 `act` 分四类的现场还原；顺带发现并补齐
      `myRotate()` 缺失的 180°/顺 90°/逆 90° 三个分支（此前是**空操作**）
@@ -1726,3 +1741,200 @@ PC 改成**等比缩放后居中** —— 拉伸会把关卡截图压扁，与�
 
 **当前基线：37 个用例类 / 379 个测试用例，全部通过。**
 **菜单保真度：81 / strict 缺 0 / loose 缺 0 —— 阶段 G ① 把最后 4 项全部收口。**
+
+---
+
+## 阶段 G ③ —— `mySolutionBrow` 整体重做（已完成，2026-09-25）
+
+### 1. 原来的差距有多大
+
+原版是 **Activity + ActionBar + `ExpandableListView`**（304 行）；PC 此前是
+**自造的模态 `JDialog` + 底部按钮栏 + `JOptionPane`**（107 行）。差距不只是行数：
+
+| 维度 | 原版 | PC（重写前） | 重写后 |
+|---|---|---|---|
+| 载体 | Activity（`JFrame`） | 模态 `JDialog` | ✅ `JFrame` |
+| 标题栏 | ActionBar「相似关卡」+ 返回折角 | 无 | ✅ `myActionBar` |
+| 列表 | 两级：组「答案」+ 子项 | 平铺 `JList` | ✅ 第 0 项是组头 |
+| 行内容 | 主行 `inf` + 次行 `time`（右对齐） | 「答案 N: 步数=…推数=…」 | ✅ `inf` / `time` |
+| 背景 | `#ff004040` | 默认 | ✅ `#004040` |
+| 选中色 | `listSelector #ff0064aa` | 默认 | ✅ `#0064aa` |
+| 导出路径 | 弹「剪切板：Lurd」对话框（**可编辑**）→ 确定才写 | 直接写剪切板 + `JOptionPane` | ✅ 走对话框 |
+| 底部按钮栏 | 无 | 「复制到剪贴板」/「关闭」 | ✅ 删掉 |
+
+### 2. 列表结构怎么落的
+
+`ExpandableListView` 在 PC 上没有等价控件，落法是 `JList<Object>`：
+第 0 项放组头字符串「答案」，之后依次是 `myMaps.mState2` 的条目；
+渲染器按类型分两支（组头 = `s_groups` 样式；子项 = `s_child` 的主行 + 次行）。
+`onCreate` 末尾的 `expandGroup(0)` = 组头恒在场。
+
+点击 / 长按取到的下标要**减掉组头那一行**才是原版的 `c_Pos`；
+组头（下标 0）与空白处（-1）都置 `c_Pos = -1`，与原版
+`onItemLongClick` 里 `if (c_Pos != -1)` 的闸门一致。
+
+### 3. 上下文菜单与导出
+
+原版 `onCreateContextMenu` **只有 1 项**「导出到剪切板: Lurd」（case 3 / case 4
+在原版里被整段注释掉）。选中后 `myMaps.m_State = load_State(m_Sel_id)`，
+再弹标题为「剪切板：Lurd」的对话框，里面是一个 `EditText` 预填 `m_State.ans`，
+**取消 / 确定**，只有点「确定」才 `myMaps.saveClipper(...)`。
+PC 用 `HoloAlertDialog` + 可编辑 `JTextArea` 还原（不再直接写剪切板）。
+
+### 4. 三处在原版里就不可达的代码，不移植
+
+`writeStateFile()`、`myExport2()`（导出 XSB+Lurd）、`mDlg`（「文档已存在，覆写吗？」）
+**在原版里只被注释掉的 case 3 / case 4 调用**，`mDlg.show()` 同样在注释块里。
+按「先确认原版是不是注释掉了」的纪律，这三处**不移植**（移植了也是死代码）。
+审计原先把它们记成「覆写对话框」差距，现已订正。
+
+### 5. 测试
+
+新增 `Phase27SolutionBrowTest`（**14 条**）：ActionBar 标题 / 折角 / 无 ⋮、
+模型结构（组头 + 2 条）、子项下标换算与 `m_Sel_id`、组头与空白处不选中、
+上下文菜单只有 1 项且走 `HoloPopupMenu`、未选中时不弹框、选中后弹框且文本框可编辑、
+预填答案、改完点「确定」写进剪切板（`myMaps.loadClipper()` 回读）、
+`m_State == null` 不炸、源码扫描（无 `JOptionPane`、无自造按钮栏、走 Holo 载体）。
+
+⚠️ 踩了自己刚写进 `TEST_NOTES` 的那个坑：**源码扫描命中了类注释里提到的
+`JOptionPane`**。修法是扫描前先剥注释：
+```java
+src = src.replaceAll("(?s)/\\*.*?\\*/", "").replaceAll("//[^\\n]*", "");
+```
+
+### 6. Android ↔ PC 差异表
+
+| 差异 | 处理 |
+|---|---|
+| `ExpandableListView` 两级列表 | `JList<Object>`：第 0 项当组头，恒展开 |
+| 平铺下标 vs 子项下标 | `c_Pos = index - 1` |
+| `EditText` 预填答案 | 可编辑 `JTextArea` |
+| `saveClipper` | `myMaps.saveClipper`（已存在） |
+| 原版不可达的三处 | 不移植（见 §4） |
+
+**当前基线：38 个用例类 / 392 个测试用例，全部通过。**
+
+---
+
+## 阶段 G ⑤ —— 普通按钮统一成 Holo 深色样式（已完成，2026-09-25）
+
+### 1. 原版的按钮到底是什么样
+
+`AppBaseTheme` 的父主题是 `android:Theme.Holo`（**深色**），所以布局里凡是没有显式
+`android:background` 的 `<Button>` 都走 framework 的 `Widget.Holo.Button`：
+
+```xml
+<style name="Widget.Holo.Button" parent="Widget.Button">
+    <item name="background">@drawable/btn_default_holo_dark</item>
+    <item name="textAppearance">?attr/textAppearanceMedium</item>
+    <item name="textColor">@color/primary_text_holo_dark</item>   <!-- #FFF3F3F3 -->
+    <item name="minHeight">48dip</item>
+    <item name="minWidth">64dip</item>
+</style>
+```
+
+`btn_default_holo_dark` 是一个 **9-patch 状态图**，只有四态：
+`normal / pressed / focused / disabled`（+ `disabled_focused`）——
+**没有 hover 态**（触摸端没有鼠标悬停）。
+
+⚠️ 别把 `res/drawable/shape_btn.xml`（`#44ffffff` + 1dp 圆角）当成按钮底图 ——
+`grep -rln "shape_btn" res/layout/` 是 **0 命中**，它是孤儿资源。
+`values/style.xml` 里也**没有任何按钮 style**。
+
+### 2. 只有 4 个布局里有 `<Button>`
+
+`grep -ln "<Button" res/layout/*.xml` → `action_manage.xml` / `export_view.xml` /
+`recog_view.xml` / `submit.xml`。其中：
+
+| 布局 | 按钮 | PC 对应 |
+|---|---|---|
+| `action_manage.xml` | 加载 / 存入 / 清空 / 暂存 / 执行（52/52/48/48/60dp × `wrap_content`，`textSize 14sp`、`padding 2dp`、`margin 2dp`） | `myActGMView.makeButton`（5 个） |
+| `export_view.xml` | `bt_ex_OK`「**导出**」（100dp × `wrap_content`） | `myExport.bt_OK` |
+| `submit.xml` | 返回 / 提交（`wrap_content`，`textSize 10pt`、`paddingLeft 10dp`、`paddingTop/Bottom 5dp`） | `mySubmit.btCancel / btOK` |
+| `recog_view.xml` | 9 个元素钮，**每个都显式写了 `android:background="#ff334455"`** | 不适用（不是平台按钮，PC 早已自绘，见阶段 D-2） |
+
+`help.xml` / `about.xml` **一个 `<Button>` 都没有** —— 原版这两个 Activity 只能按 BACK 退出。
+所以 PC 的 `myAbout` / `myAbout1` / `myAbout2` / `Help` 底栏按钮是 **PC 自造**的
+（而且这几个窗口没有套原版深色主题），不在本阶段范围，见 §5。
+
+### 3. 自绘：`compat/HoloButton`
+
+⚠️ **必须自绘**：`JButton.setBackground()` 会被 FlatLaf 覆盖（同 `myRecogView` 的元素钮，
+见 `RENDER_NOTES.md`）。而且 `paintComponent` 里**不调 `super.paintComponent`** ——
+文字也自己画，免得 FlatLaf / `BasicButtonUI` 对禁用态前景色各有一套处理
+（`BasicButtonUI.paintText` 的禁用分支用的是 `getBackground().brighter()/darker()`）。
+
+配色全部实测自 `drawable-xxhdpi/btn_default_{normal,pressed,disabled}_holo_dark.9.png`
+（80×98，density 3.4），**保留 alpha** 让 Swing 按 SrcOver 合成 —— 与原版
+「半透明底叠在窗口背景上」的语义一致：
+
+| 角色 | normal | pressed | disabled |
+|---|---|---|---|
+| 主体 | `(41,47,52,189)` | `(240,240,240,89)` | `(153,153,153,39)` |
+| 顶棱 | `(82,87,91,199)` | `(249,249,249,145)` | `(150,150,150,128)` |
+| 外描边 | `(32,32,32,191)` | `(208,208,208,97)` | `(116,116,116,128)` |
+| 底缘 | `(29,29,29,213)` | `(122,122,122,131)` | `(108,108,108,128)` |
+| 文字 | `#F3F3F3` | `#F3F3F3` | `#4C4C4C` |
+
+几何：9-patch 的**透明外缘**（左右 11px、上 12px、下 8px ÷ 3.4 ≈ 3 / 4 / 2dp）
+必须保留 —— 按钮图形不铺满 View 边界，所以相邻按钮看起来比「边界间距」更宽。
+
+尺寸语义：`minWidth 64dp` / `minHeight 48dp` **只在 `wrap_content` 时生效**；
+布局写了确定值（`layout_width="52dp"`）时走 `MeasureSpec.EXACTLY`，不受下限约束。
+Swing 侧的对应判据就是「调用方有没有显式 `setPreferredSize(...)`」，
+所以 `HoloButton.getPreferredSize()` 先判 `isPreferredSizeSet()`。
+
+### 4. 顺带订正的两个偏差
+
+| 项 | 改前 | 改后（= 原版） |
+|---|---|---|
+| `myActGMView` 按钮高度 | 36dp | **48dp**（`Widget.Holo.Button` 的 `minHeight`） |
+| `myExport` 按钮文案 | 「执行导出」 | **「导出」**（`export_view.xml` 的 `android:text`） |
+
+`myExport` 的底栏底色也一并取成 `#363636` —— 原版 `bt_ex_OK` 内嵌在
+「导出到文档」那一行里，该行就是 `android:background="#363636"`；
+Holo 按钮的半透明底必须有正确的合成背景才不会发灰。
+
+### 5. 刻意没改的地方（都不是「普通按钮」）
+
+| 位置 | 为什么不动 |
+|---|---|
+| `HoloAlertDialog.addButton` | `AlertDialog` 的底栏按钮是 `Widget.Holo.Button.Borderless`（`selectableItemBackground`），**本来就无边框**，只有按压/聚焦的白色水波 —— 与 `btn_default_holo_dark` 是两回事。已加测试锁住它不会被「统一」掉 |
+| `recog_view.xml` 的 9 个元素钮 | 显式 `#ff334455`，不是平台按钮；PC 早已自绘（阶段 D-2） |
+| `myAbout` / `myAbout1` / `myAbout2` / `Help` 的底栏按钮 | 原版 `help.xml` / `about.xml` **没有按钮**，PC 自造；且这几个窗口**没套原版深色主题**（黑底），单把按钮改成 Holo 反而更不协调 |
+| `myGameView.showSetup2Dialog` 的「确定」 | 原版这里是 `AlertDialog.setMultiChoiceItems()`，PC 自造成一个浅色 `JDialog`。整个对话框都要重做，不在本阶段 |
+
+> **🆕 新开条目（留给后续阶段）**：`myAbout` / `myAbout1` / `myAbout2` / `Help` /
+> `myExport` 这几个窗口没有套原版 `Theme.Holo` 的深色 `windowBackground`（纯黑），
+> 连带 `myGameView.showSetup2Dialog` 应改回 `HoloAlertDialog` + 多选列表。
+> 这是一条**窗口主题 / 对话框载体**的线，比按钮样式大。
+
+### 6. 测试
+
+新增 `Phase28HoloButtonTest`（**20 条**）：12 个配色常量与 AOSP 实测 ARGB 逐一对齐、
+文字色（`#F3F3F3` / `#4C4C4C`）、`minWidth/minHeight`、9-patch 透明外缘（四边逐行逐列）、
+正常态五段结构（描边/顶棱/主体/底缘/描边）的**合成色**断言、
+黑底上主体比底亮、按下态变亮、禁用态换图、文字自己画且墨迹重心居中、
+`<html>…<br>…</html>` 拆行、`wrap_content` 被下限钳制 / 显式尺寸不被钳制、
+工厂方法的 `textSize` 与 `padding`、`myActGMView` 五个按钮（含 52/52/48/48/60 × 48）、
+`mySubmit` 两个按钮、`myExport` 的按钮文案与底栏底色、
+`HoloAlertDialog` 底栏按钮**不是** `HoloButton`、`HoloContent.button` 委托、
+以及三个窗口的源码扫描（不再有裸 `new JButton(`）。
+
+⚠️ 写测试时踩到的两个坑：
+1. **`Component.paint(g)` 不会把坐标平移到自己原点** —— 直接 `b.setBounds(8,8,…); b.paint(g)`
+   会把按钮画在 (0,0)。要么 `paintAll`，要么每个组件渲染进自己的 `BufferedImage`。
+2. **别断言「禁用态比正常态暗」**：禁用主体是浅灰 `@15%` alpha，叠在 `#363636` 上
+   反而比正常态（深灰 `@74%`）**亮**；只有叠在黑底上才更暗。差别要看合成色本身。
+
+### 7. Android ↔ PC 差异表
+
+| 差异 | 处理 |
+|---|---|
+| 9-patch 位图（80×98 @3.4x） | 自绘等价几何；`px ÷ 3.4` 取整成 dp，1dp = 1px |
+| `state_focused` / `state_window_focused` | **不实现** —— 原版靠 d-pad/键盘聚焦，PC 上无对应语义；Swing 焦点框也已关掉（`setFocusPainted(false)`） |
+| hover 态 | 原版**没有**，PC 也不加（不引入 PC 专属交互） |
+| `layout_margin="2dp"` | PC 侧仍是 `Box.createHorizontalStrut(4)`，**未还原 2dp margin** —— 间距偏小，属「布局」条目 |
+| `minWidth/minHeight` | 只在未显式 `setPreferredSize` 时生效（对应 `AT_MOST` vs `EXACTLY`） |
+
+**当前基线：39 个用例类 / 412 个测试用例，全部通过。**

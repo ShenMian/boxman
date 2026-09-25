@@ -1,5 +1,6 @@
 package my.boxman;
 
+import my.boxman.compat.HoloButton;
 import my.boxman.compat.HoloChoiceDialog;
 import my.boxman.compat.HoloConfirmDialog;
 import my.boxman.compat.HoloContent;
@@ -236,13 +237,16 @@ public class myActGMView extends JDialog {
         return HoloContent.wrapCheck(text, selected, textSize);
     }
 
+    /**
+     * 原版 {@code action_manage.xml} 的 {@code <Button>}：主题默认的
+     * {@code Widget.Holo.Button}（{@code btn_default_holo_dark}），
+     * {@code textSize=14sp}、{@code padding=2dp}、{@code layout_width} 是确定值
+     * （52/52/48/48/60dp）、{@code layout_height=wrap_content} → 被 {@code minHeight=48dp}
+     * 顶到 **48dp**（此前 PC 写的是 36dp，是偏差）。
+     */
     private static JButton makeButton(String text, int widthDp) {
-        JButton b = new JButton(text);
-        b.setFont(new Font("Microsoft YaHei", Font.PLAIN, 14));
-        // 原版 Button 是 android:padding="2dp"。FlatLaf 默认按钮内边距大得多，
-        // 不改的话 52dp 宽的按钮放不下两个中文字（会变成「...」）。
-        b.setMargin(new Insets(2, 2, 2, 2));
-        Dimension d = new Dimension(widthDp, 36);
+        HoloButton b = HoloButton.create(text, 14, new Insets(2, 2, 2, 2));
+        Dimension d = new Dimension(widthDp, HoloButton.MIN_HEIGHT);
         b.setPreferredSize(d);
         b.setMinimumSize(d);
         b.setMaximumSize(d);

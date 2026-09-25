@@ -7,6 +7,8 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import my.boxman.compat.HoloButton;
+import my.boxman.compat.HoloContent;
 import my.boxman.compat.UiWindow;
 
 /**
@@ -137,8 +139,15 @@ public class myExport extends JFrame {
         add(new JScrollPane(et_Action), BorderLayout.CENTER);
 
         JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 8));
-        bt_OK = new JButton("执行导出");
-        JButton bt_Close = new JButton("关闭");
+        // 原版没有这条底栏：bt_ex_OK 是内嵌在「导出到文档」那一行里的，该行
+        // android:background="#363636"。PC 把它做成底栏，底色取同一个 #363636，
+        // 这样 Holo 深色按钮的半透明底才有正确的合成背景。
+        bottomBar.setOpaque(true);
+        bottomBar.setBackground(HoloContent.BAND);
+        // 原版 export_view.xml 的 bt_ex_OK：文字是「导出」（此前 PC 写成「执行导出」，已订正），
+        // 主题默认 Widget.Holo.Button → HoloButton。
+        bt_OK = new HoloButton("导出");
+        JButton bt_Close = new HoloButton("关闭");
         bt_Close.addActionListener(e -> dispose());
         bottomBar.add(bt_OK);
         bottomBar.add(bt_Close);
