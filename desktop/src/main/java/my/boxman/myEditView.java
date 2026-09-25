@@ -72,16 +72,13 @@ public class myEditView extends JFrame {
             this.bottom = b;
             this.row = m_row;
             this.col = m_col;
-            if (s1 != null) {
-                this.sel1 = new selNode();
-                this.sel1.row = s1.row;
-                this.sel1.col = s1.col;
-            }
-            if (s2 != null) {
-                this.sel2 = new selNode();
-                this.sel2.row = s2.row;
-                this.sel2.col = s2.col;
-            }
+            // ⚠️ 与原版一致：选区的两个点存**引用**、不拷贝（原版就是 `sel1 = s1; sel2 = s2;`）。
+            //    这不是偷懒 —— myUnDo()/myReDo() 的 `act == 90` 分支要靠「读到的 sel2 已经是
+            //    **旋转之后**的值」才能把选区行列换回来（见 restoreByAct 的注释）。
+            //    改成深拷贝会让 90 度旋转的撤销/重做把选区尺寸还原成错的（2×3 与 3×2 互串）。
+            //    地图本身仍走深拷贝（原版是 `map = m` 引用 + getMap() 序列化，PC 用拷贝等价替代）。
+            this.sel1 = s1;
+            this.sel2 = s2;
             if (mtx0 != null) {
                 this.mMtx = new Matrix();
                 this.mMtx.set(mtx0);
@@ -100,8 +97,46 @@ public class myEditView extends JFrame {
             }
         }
 
+        /**
+         * 记录动作号；`act == 3`（单点绘制）时**另外只抓一个格子** —— 照抄原版
+         * `ActNode.Act(int)`（`myEditView.java:2330-2349`）。
+         *
+         * <p>原版对 `act == 3` 走单格快照、其余走 `getMap()` 整片序列化，是有原因的：
+         * 单点绘制只动一个格子，没必要整片存。**而「只存一格」会让下面这个原版怪癖得以保留**：
+         * 用 {@code @} 素材单点绘制时，{@code myEditViewMap} 会把全图其它 {@code @}/{@code +}
+         * 一并抹掉（「仓管员只能留存 1 位」），但 `act == 3` 的 undo **只回写被点的那个格子**，
+         * 被抹掉的其它仓管员**不会**回来。整片回写能「修好」这个现象，但那就不是 1:1 了 ——
+         * 所以这里照原版，单点就是单点。
+         *
+         * <p>⚠️ PC 的 {@code map} 是**相对坐标**的拷贝（{@code map[i-top][j-left]}），
+         * 所以这里是 {@code map[row][col]}；原版 {@code map} 是 {@code m_cArray} 本体，
+         * 写的是 {@code map[row+top][col+left]} —— 指的是同一个格子。
+         */
         public void Act(int a) {
             this.act = a;
+            if (a == 3) {                       //仅需 undo 单点
+                char c = (map != null) ? map[row][col] : '-';
+                switch (c) {
+                    case '_':
+                    case ' ':
+                    case '#':
+                    case '-':
+                    case '.':
+                    case '$':
+                    case '*':
+                    case '@':
+                    case '+':
+                        break;
+                    default:
+                        c = '-';
+                }
+                this.ch = c;
+            }
+        }
+
+        /** `act == 3` 的回写：只还原被点的那一个格子（原版 `m_cArray[nd.row+nd.top][nd.col+nd.left] = nd.ch`）。 */
+        public void restoreSingle(char[][] target) {
+            if (target != null) target[row + top][col + left] = ch;
         }
 
         public void setMap(char[][] target) {
@@ -450,34 +485,114 @@ public class myEditView extends JFrame {
         }
     }
 
+    /**
+     * 撤销。**逐项照抄原版 `myUnDo()`**（`myEditView.java:1097-1152`）。
+     */
     private void myUnDo() {
         if (m_UnDoList.isEmpty()) return;
         ActNode nd = m_UnDoList.pollLast();
-        ActNode nd2 = new ActNode(m_cArray, mMap.m_nMapLeft, mMap.m_nMapRight, mMap.m_nMapTop, mMap.m_nMapBottom,
-                nd.row, nd.col, null, null, null, null);
-        nd2.Act(nd.act);
-
-        nd.setMap(m_cArray);
-        m_ReDoList.offer(nd2);
-        bt_ReDo.setEnabled(true);
-        bt_UnDo.setEnabled(!m_UnDoList.isEmpty());
-        bt_Save.setEnabled(true);
-        mMap.repaint();
+        ActNode nd2 = restoreByAct(nd);
+        if (nd2 != null) {
+            m_ReDoList.offer(nd2);
+            bt_ReDo.setEnabled(true);
+            bt_UnDo.setEnabled(!m_UnDoList.isEmpty());
+            bt_Save.setEnabled(true);
+            mMap.repaint();
+        }
+        mMap.isFistClick = true;
     }
 
+    /**
+     * 重做。**逐项照抄原版 `myReDo()`**（`myEditView.java:1154-1209`）。
+     * 与撤销唯一的结构差别只在末尾把反向快照压回哪条栈、以及刷哪个按钮。
+     */
     private void myReDo() {
         if (m_ReDoList.isEmpty()) return;
         ActNode nd = m_ReDoList.pollLast();
-        ActNode nd2 = new ActNode(m_cArray, mMap.m_nMapLeft, mMap.m_nMapRight, mMap.m_nMapTop, mMap.m_nMapBottom,
-                nd.row, nd.col, null, null, null, null);
-        nd2.Act(nd.act);
+        ActNode nd2 = restoreByAct(nd);
+        if (nd2 != null) {
+            m_UnDoList.offer(nd2);
+            bt_UnDo.setEnabled(true);
+            bt_ReDo.setEnabled(!m_ReDoList.isEmpty());
+            bt_Save.setEnabled(true);
+            mMap.repaint();
+        }
+        mMap.isFistClick = true;
+    }
 
-        nd.setMap(m_cArray);
-        m_UnDoList.offer(nd2);
-        bt_UnDo.setEnabled(true);
-        bt_ReDo.setEnabled(!m_ReDoList.isEmpty());
-        bt_Save.setEnabled(true);
-        mMap.repaint();
+    /**
+     * 按 {@code nd.act} 还原现场，并返回一份**同分类**的反向快照（供撤销↔重做互换）。
+     *
+     * <p>原版把这段逻辑在 {@code myUnDo()} 与 {@code myReDo()} 里各写了一遍，
+     * 两处逐字相同（含 `act == 90` 那两行「只是书写顺序不同、取值完全一致」的赋值），
+     * 所以这里抽成一个方法 —— **行为等价，只是去掉了重复**。
+     *
+     * <p>分类（原版 `ActNode` 的注释就是这份清单）：
+     * <pre>
+     *   3          单点绘制                       —— 回写该点，隐藏选区
+     *   6          连续绘制                       —— 整片回写，隐藏选区
+     *   0/1/2/5/90 填充·剪切·粘贴·变换            —— 整片回写 + 还原选区（90 度时行列对调）
+     *   4/9/8/7    改变尺寸·标准化·剪切板导入·提交 —— 整片回写 + 还原四至与变换矩阵 + initArena3()
+     * </pre>
+     *
+     * <p>⚠️ 顺序不能改：先 {@code setMap()} 再改四至 —— 快照是按**旧四至**裁的，
+     * 反过来会把数据写到已经变了的窗口里。
+     *
+     * <p>⚠️ {@code act == 90} 的「行列对调」看着别扭，但它是对的：
+     * 90 度旋转后 {@code mMap.selNode2} 已被 {@link #writeRot90(boolean)} 改成
+     * 「旋转后」的角点，而 {@code nd.sel1}/{@code nd.sel2} 是**引用**（见 {@code ActNode} 构造器注释），
+     * 读到的就是这两个「旋转后」的值 —— 所以这里必须先对调行列，才能换回旋转前的 行×列。
+     * 若哪天把 {@code ActNode} 改成深拷贝选区，**这里必须同步去掉对调**，否则 2×3 与 3×2 会互串。
+     */
+    private ActNode restoreByAct(ActNode nd) {
+        ActNode nd2;
+        if (nd.act == 3) {                       //单点绘制
+            nd2 = new ActNode(m_cArray, mMap.m_nMapLeft, mMap.m_nMapRight, mMap.m_nMapTop, mMap.m_nMapBottom,
+                    nd.row, nd.col, null, null, null, null);
+            nd2.Act(nd.act);
+            nd.restoreSingle(m_cArray);
+            mMap.selNode.row = -1;               //避免显示选择区域块
+        } else if (nd.act == 6) {                //连续绘制
+            nd2 = new ActNode(m_cArray, mMap.m_nMapLeft, mMap.m_nMapRight, mMap.m_nMapTop, mMap.m_nMapBottom,
+                    nd.row, nd.col, null, null, null, null);
+            nd2.Act(nd.act);
+            nd.setMap(m_cArray);
+            mMap.selNode.row = -1;               //避免显示选择区域块
+        } else if (nd.act == 0 || nd.act == 1 || nd.act == 2 || nd.act == 5 || nd.act == 90) {
+            //填充、剪切、粘贴、变换
+            nd2 = new ActNode(m_cArray, mMap.m_nMapLeft, mMap.m_nMapRight, mMap.m_nMapTop, mMap.m_nMapBottom,
+                    -1, -1, null, null, mMap.selNode, mMap.selNode2);
+            nd2.Act(nd.act);
+            nd.setMap(m_cArray);
+            if (nd.sel1 != null && nd.sel1.row >= 0) {
+                if (nd.act == 90) {              //变换后选区转了 90 度 → 行列对调
+                    selRows = nd.sel2.col - nd.sel1.col + 1;
+                    selCols = nd.sel2.row - nd.sel1.row + 1;
+                } else {
+                    selRows = nd.sel2.row - nd.sel1.row + 1;
+                    selCols = nd.sel2.col - nd.sel1.col + 1;
+                }
+                mMap.selNode.row = nd.sel1.row;
+                mMap.selNode.col = nd.sel1.col;
+                mMap.selNode2.row = mMap.selNode.row + selRows - 1;
+                mMap.selNode2.col = mMap.selNode.col + selCols - 1;
+            }
+        } else {                                  //改变尺寸、标准化、提交、剪切板导入。act = 4、9、8、7
+            nd2 = new ActNode(m_cArray, mMap.m_nMapLeft, mMap.m_nMapRight, mMap.m_nMapTop, mMap.m_nMapBottom,
+                    -1, -1, mMap.mMatrix, mMap.mCurrentMatrix, null, null);
+            nd2.Act(nd.act);
+            nd.setMap(m_cArray);
+            mMap.m_nMapLeft = nd.left;
+            mMap.m_nMapRight = nd.right;
+            mMap.m_nMapTop = nd.top;
+            mMap.m_nMapBottom = nd.bottom;
+            if (nd.mMtx != null) {
+                mMap.mMatrix.set(nd.mMtx);
+                mMap.mCurrentMatrix.set(nd.mCurMtx);
+            }
+            mMap.initArena3();
+        }
+        return nd2;
     }
 
     private void doCut() {
@@ -555,48 +670,212 @@ public class myEditView extends JFrame {
         mMap.repaint();
     }
 
+    /**
+     * 底栏「变换」按钮。逐项照抄原版 {@code bt_Tru} 的 {@code onCheckedChanged}（`myEditView.java:313-343`）：
+     * 未选区则先全选 → 单选列表（**默认第 1 项「90度(顺时针)」**）→ 取消/确定 → {@link #myRotate(int)}。
+     *
+     * <p>⚠️ 原版这个单选对话框**不可取消**（`setCancelable(false)`），且选项文字与
+     * `mWhich` 一样是**与「提交到」共用的那个字段** —— 这里照抄，别另开一个字段。
+     */
     private void showTransformMenu() {
-        if (mMap.selNode.row < 0) mMap.mySelectAll();
-        String[] opts = {"180度旋转", "90度顺时针", "90度逆时针", "水平翻转", "垂直翻转"};
-        int choice = JOptionPane.showOptionDialog(this, "选择变换操作", "变换",
-                JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, opts, opts[1]);
-        if (choice >= 0) {
-            myRotate(choice);
+        if (mMap.selNode.row < 0) mMap.mySelectAll();  //默认选择全部
+
+        String[] m_menu = {
+                "180度",
+                "90度(顺时针)",
+                "90度(逆时针)",
+                "水平翻转",
+                "垂直翻转"
+        };
+
+        if (mWhich < 0) mWhich = 1;  //默认"顺90度旋转"
+
+        HoloChoiceDialog.selectThenOk(this, "变换", null, m_menu, mWhich, which -> {
+            mWhich = which;
+            myRotate(mWhich);
+        }).setVisible(true);
+    }
+
+    /**
+     * 自动调整关卡尺寸 —— 粘贴与变换时，现有关卡四至装不下新区域就扩。
+     * 逐行照抄原版 {@code resetSize()}（`myEditView.java:1693-1708`）。
+     *
+     * <p>调用方必须**先**把新区域的尺寸写进 {@code selRows2}/{@code selCols2}，
+     * 本方法会按需**夹取**它们。
+     */
+    void resetSize() {
+        //扩展尺寸以便粘贴
+        if (mMap.selNode.row + selRows2 + mMap.m_nMapTop > mMap.m_nMapBottom) {  //高超现有尺寸
+            if (mMap.m_nMapTop + mMap.selNode.row + selRows2 > myMaps.m_nMaxRow * 2 - 1)  //高超最大尺寸
+                selRows2 = myMaps.m_nMaxRow * 2 - 1 - mMap.m_nMapTop - mMap.selNode.row;
+            mMap.m_nMapBottom = mMap.m_nMapTop + mMap.selNode.row + selRows2 - 1;
+        }
+        if (mMap.selNode.col + selCols2 + mMap.m_nMapLeft > mMap.m_nMapRight) {  //宽超现有尺寸
+            if (mMap.m_nMapLeft + mMap.selNode.col + selCols2 > myMaps.m_nMaxCol * 2 - 1)  //宽超最大尺寸
+                selCols2 = myMaps.m_nMaxCol * 2 - 1 - mMap.m_nMapLeft - mMap.selNode.col;
+            mMap.m_nMapRight = mMap.m_nMapLeft + mMap.selNode.col + selCols2 - 1;
+        }
+
+        mMap.initArena2();
+    }
+
+    /**
+     * 90 度旋转写入。逐行照抄原版 {@code myRot90(boolean)}（`myEditView.java:1299-1397`）。
+     *
+     * <p>⚠️ 与其余变换不同：90 度旋转会**改变选区的长宽**，所以它自己
+     * ① 先算新尺寸 → ② `resetSize()` 扩四至 → ③ 检查新区域有没有压到已绘制内容 →
+     * ④ 有则先弹「部分原有绘制将被覆盖，确定吗？」再动手；
+     * 而 `ActNode`/`Act(90)` 与入栈都在**确定之后**（也就是原版那句注释说的
+     * 「1、2 情况特殊，需在调整四至且询问后，才可进入 undo 栈」）。
+     */
+    private void myRot90(final boolean is90) {
+        //取区域行列的小者，检查旋转前后的重合区域用
+        int mRC = selRows < selCols ? selRows : selCols;
+
+        //计算旋转后的区域尺寸
+        selRows2 = selCols;
+        selCols2 = selRows;
+
+        //再分析是否需要扩展关卡尺寸，要用到 selRows2、selCols2
+        resetSize();
+
+        //检查新区域是否存在绘制，也要用到 selRows2、selCols2
+        boolean flg = false;
+        for (int i = 0; i < selRows2; i++) {
+            for (int j = 0; j < selCols2; j++) {
+                if (i < mRC && j < mRC) continue;  //重合区域，不需检查
+                char c = m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft];
+                if (c == '#' || c == '$' || c == '*' || c == '@' || c == '+' || c == '.') {
+                    flg = true;
+                    break;
+                }
+            }
+        }
+        if (flg) {  //旋转会覆盖部分已绘制的区域，则进行覆盖提醒
+            new HoloConfirmDialog(this, "提醒", "部分原有绘制将被覆盖，确定吗？",
+                    "取消", "确定", () -> writeRot90(is90)).setVisible(true);
+        } else {
+            writeRot90(is90);
         }
     }
 
-    public void myRotate(int which) {
+    /**
+     * `myRot90` 的写入手半段（原版把同一段在两个分支里各写了一遍，这里合一）。
+     * 逐行照抄原版 `myEditView.java:1332-1362` / `1366-1396`。
+     */
+    private void writeRot90(boolean is90) {
+        ndAct = null;
         ndAct = new ActNode(m_cArray, mMap.m_nMapLeft, mMap.m_nMapRight, mMap.m_nMapTop, mMap.m_nMapBottom,
                 -1, -1, null, null, mMap.selNode, mMap.selNode2);
         ndAct.Act(90);
 
-        selRows = mMap.selNode2.row - mMap.selNode.row + 1;
-        selCols = mMap.selNode2.col - mMap.selNode.col + 1;
-        char[][] temp = new char[selRows][selCols];
-        for (int i = 0; i < selRows; i++) {
+        for (int i = 0; i < selRows; i++) {  //清除原区域
             for (int j = 0; j < selCols; j++) {
-                temp[i][j] = m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft];
+                m_cSelArray[i][j] = m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft];
+                m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft] = '-';
             }
         }
-
-        if (which == 3) {  // 水平翻转
-            for (int i = 0; i < selRows; i++) {
-                for (int j = 0; j < selCols; j++) {
-                    m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft] = temp[i][selCols - 1 - j];
-                }
-            }
-        } else if (which == 4) {  // 垂直翻转
-            for (int i = 0; i < selRows; i++) {
-                for (int j = 0; j < selCols; j++) {
-                    m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft] = temp[selRows - 1 - i][j];
-                }
+        char ch;
+        for (int i = 0; i < selRows2; i++) {  //旋转覆盖写入
+            for (int j = 0; j < selCols2; j++) {
+                if (is90) ch = m_cSelArray[selRows - 1 - j][i];   //顺 90 度
+                else ch = m_cSelArray[j][selCols - 1 - i];        //逆 90 度
+                m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft] = ch;
             }
         }
+        //更改第二选择点坐标
+        mMap.selNode2.row = mMap.selNode.row + selRows2 - 1;
+        mMap.selNode2.col = mMap.selNode.col + selCols2 - 1;
+        selRows = selRows2;
+        selCols = selCols2;
 
         m_UnDoList.offer(ndAct);
         bt_UnDo.setEnabled(true);
+        m_ReDoList.clear();
+        bt_ReDo.setEnabled(false);
         bt_Save.setEnabled(true);
         mMap.repaint();
+    }
+
+    /**
+     * 变换。逐行照抄原版 {@code myRotate(int n)}（`myEditView.java:1622-1691`）。
+     *
+     * <p>⚠️ **入栈时机分两种**，这是原版那句 `if (n < 1 || n > 2)` 的全部含义：
+     * <ul>
+     *   <li>{@code n == 0/3/4}（180度 / 水平翻转 / 垂直翻转）—— 四至不变，
+     *       在这里先建 `ActNode` + {@code Act(5)}，做完立即入栈；</li>
+     *   <li>{@code n == 1/2}（顺/逆 90 度）—— 四至与选区尺寸都会变，
+     *       交给 {@link #myRot90(boolean)} 在**扩尺寸并询问之后**才建 `ActNode` + {@code Act(90)} 入栈。</li>
+     * </ul>
+     * 所以 `act` 在这里是 **5**、在 90 度那条路上是 **90** ——
+     * 二者在 {@link #restoreByAct(ActNode)} 里走同一个「还原选区」分支，
+     * 区别只在于 90 度时选区行列要对调。
+     */
+    public void myRotate(int n) {
+        if (n < 1 || n > 2) {  //1、2 情况特殊，需在调整四至且询问后，才可进入 undo 栈
+            ndAct = null;
+            ndAct = new ActNode(m_cArray, mMap.m_nMapLeft, mMap.m_nMapRight, mMap.m_nMapTop, mMap.m_nMapBottom,
+                    -1, -1, null, null, mMap.selNode, mMap.selNode2);
+            ndAct.Act(5);
+        }
+        selRows = mMap.selNode2.row - mMap.selNode.row + 1;
+        selCols = mMap.selNode2.col - mMap.selNode.col + 1;
+        char ch;
+        switch (n) {
+            case 0:  //180度
+                for (int i = 0; i < selRows / 2; i++) {
+                    for (int j = 0; j < selCols; j++) {
+                        ch = m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft];
+                        m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft]
+                                = m_cArray[mMap.selNode.row + selRows - 1 - i + mMap.m_nMapTop][mMap.selNode.col + selCols - 1 - j + mMap.m_nMapLeft];
+                        m_cArray[mMap.selNode.row + selRows - 1 - i + mMap.m_nMapTop][mMap.selNode.col + selCols - 1 - j + mMap.m_nMapLeft] = ch;
+                    }
+                }
+                if (selRows % 2 == 1) {  //奇数行：中间那行的左右两半再翻一次
+                    int i = selRows / 2;
+                    for (int j = 0; j < selCols / 2; j++) {
+                        ch = m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft];
+                        m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft]
+                                = m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + selCols - 1 - j + mMap.m_nMapLeft];
+                        m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + selCols - 1 - j + mMap.m_nMapLeft] = ch;
+                    }
+                }
+                break;
+            case 1:  //顺90度
+                myRot90(true);
+                break;
+            case 2:  //逆90度
+                myRot90(false);
+                break;
+            case 3:  //水平翻转
+                for (int i = 0; i < selRows; i++) {
+                    for (int j = 0; j < selCols / 2; j++) {
+                        ch = m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft];
+                        m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft]
+                                = m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + selCols - 1 - j + mMap.m_nMapLeft];
+                        m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + selCols - 1 - j + mMap.m_nMapLeft] = ch;
+                    }
+                }
+                break;
+            case 4:  //垂直翻转
+                for (int i = 0; i < selRows / 2; i++) {
+                    for (int j = 0; j < selCols; j++) {
+                        ch = m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft];
+                        m_cArray[mMap.selNode.row + i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft]
+                                = m_cArray[mMap.selNode.row + selRows - 1 - i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft];
+                        m_cArray[mMap.selNode.row + selRows - 1 - i + mMap.m_nMapTop][mMap.selNode.col + j + mMap.m_nMapLeft] = ch;
+                    }
+                }
+                break;
+        }
+        if (n < 1 || n > 2) {  //90 度那两条路已在 myRot90() 里入过栈
+            m_UnDoList.offer(ndAct);
+            bt_UnDo.setEnabled(true);
+            m_ReDoList.clear();
+            bt_ReDo.setEnabled(false);
+            bt_Save.setEnabled(true);
+            mMap.repaint();
+        }
     }
 
     public void My_ReSize(int side) {

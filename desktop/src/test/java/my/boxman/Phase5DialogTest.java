@@ -117,32 +117,33 @@ public class Phase5DialogTest {
     }
 
     @Test
-    public void testDelDialog() {
-        final boolean[] flag = new boolean[1];
-        DelDialog dlg = new DelDialog(null, "测试删除关卡", delAns -> flag[0] = delAns);
-
-        assertNotNull("DelDialog should be created", dlg);
-        assertTrue("chkDeleteSolutions should default to true", dlg.chkDeleteSolutions.isSelected());
-
-        dlg.chkDeleteSolutions.setSelected(false);
-        dlg.btDelete.doClick();
-        assertFalse("Should confirm with delAns false", flag[0]);
+    public void testDelDialogRemoved() {
+        // PC 自造的「删除确认 + 是否连同解答与状态一起删」对话框（DelDialog）已删除：
+        // 原版 myGridView 的「删除」只是一句 setMessage 的确认框（myGridView.java:1484-1492），
+        // 没有这个勾选框；而原版真正带「删除答案...」的是 BoxMan 的**关卡集**上下文菜单
+        // （BoxMan.java:1450），属于另一条尚未移植的入口链。
+        assertFalse("DelDialog 不应再存在", new File("src/main/java/my/boxman/DelDialog.java").exists());
     }
 
     @Test
-    public void testGameViewHasNoMenuBar() {
+    public void testGameViewHasNoMenuBarAndNoMapPopupMenu() {
         // 原版 myGameView 是 FEATURE_NO_TITLE + FLAG_FULLSCREEN：既没有 ActionBar 也没有菜单栏，
         // 全部菜单项都在底栏「更多」按钮弹出的选项菜单里（res/menu/player.xml）。
-        // 桌面端把原来的 JMenuBar 内容改挂到地图右键菜单，因此这里断言：
-        //   1) 窗口上没有 JMenuBar（否则会多出一行、与原版不符）
-        //   2) 地图右键菜单仍然存在，功能入口没有丢失
+        // 阶段 G ④ 还把 PC 自造的「地图右键菜单」整体删掉了 —— 原版 myGameView /
+        // myGameViewMap 里没有任何 registerForContextMenu / setOnLongClickListener。
         myGameView gv = new myGameView();
         assertNull("myGameView 不应有 JMenuBar（原版无菜单栏）", gv.getJMenuBar());
+        assertNull("地图上不应有右键菜单（原版没有上下文菜单）",
+                gv.mMap.getComponentPopupMenu());
 
-        JPopupMenu popup = gv.mMap.getComponentPopupMenu();
-        assertNotNull("地图应保留右键菜单，保证 PC 辅助入口可达", popup);
-        assertTrue("右键菜单应包含原版的 5 个分组（导航/操作/视图/工具/帮助）",
-                popup.getComponentCount() >= 5);
+        // 功能入口没丢：全都落在「更多」按钮弹出的选项菜单里
+        gv.openOptionsMenu();
+        java.util.List<String> titles = gv.optionsMenuTitlesForTest();
+        assertTrue("选项菜单应有 player.xml 的 13 项", titles.size() >= 13);
+        assertTrue(titles.contains("重新开始"));
+        assertTrue(titles.contains("导出..."));
+        assertTrue(titles.contains("导入..."));
+        assertTrue(titles.contains("打开状态..."));
 
         gv.myStop();
         gv.dispose();

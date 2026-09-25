@@ -32,9 +32,8 @@ import static org.junit.Assert.assertTrue;
  * <p>本测试用源码扫描把这条约定锁住：以后谁再写 {@code new JMenuItem(...)}
  * 或 {@code new JPopupMenu()} 就会在这里失败。
  *
- * <p>唯一的白名单是 {@code myGameView.installMapPopupMenu()} ——
- * 那是 PC 自造的多级右键菜单（原版 {@code myGameView} 根本没有上下文菜单），
- * 属阶段 G 待删项，见 {@code PORTING_AUDIT.md}。
+ * <p>阶段 G ④ 删掉 {@code myGameView.installMapPopupMenu()}（PC 自造的多级右键菜单，
+ * 原版 {@code myGameView} 根本没有上下文菜单）之后，这条约定已经<b>没有白名单</b>了。
  */
 public class Phase20MenuCarrierConventionTest {
 
@@ -43,9 +42,6 @@ public class Phase20MenuCarrierConventionTest {
 
     private static final String SRC = "src/main/java/my/boxman";
     private static final String COMPAT = SRC + "/compat";
-
-    /** PC 自造菜单的唯一白名单文件。 */
-    private static final String WHITELIST = "myGameView.java";
 
     private static List<File> mainSources;
 
@@ -59,20 +55,16 @@ public class Phase20MenuCarrierConventionTest {
     }
 
     @Test
-    public void testNoBareJMenuItemOutsideWhitelist() {
-        List<String> hits = scan("new JMenuItem(");
-        for (String h : hits) {
-            assertTrue("弹出菜单必须走 HoloPopupMenu，别直接 new JMenuItem：" + h,
-                    h.startsWith(WHITELIST + ":"));
-        }
+    public void testNoBareJMenuItemAnywhere() {
+        assertEquals("弹出菜单必须走 HoloPopupMenu，全项目不应再有 new JMenuItem(",
+                "[]", scan("new JMenuItem(").toString());
     }
 
     @Test
-    public void testNoBareJPopupMenuOutsideCompatAndWhitelist() {
+    public void testNoBareJPopupMenuOutsideCompat() {
         for (String h : scan("new JPopupMenu()")) {
-            boolean ok = h.startsWith(WHITELIST + ":")          // PC 自造的多级右键菜单（阶段 G 待删）
-                    || h.startsWith("compat/HoloPopupMenu.java:");
-            assertTrue("弹出菜单必须走 HoloPopupMenu.create()，别直接 new JPopupMenu()：" + h, ok);
+            assertTrue("弹出菜单必须走 HoloPopupMenu.create()，别直接 new JPopupMenu()：" + h,
+                    h.startsWith("compat/HoloPopupMenu.java:"));
         }
     }
 

@@ -93,6 +93,10 @@ public class Phase17EditViewTest {
         myMaps.curMapNum = -4;
 
         win = new myEditView();
+        // ⚠️ 构造器里的 UiWindow.applyPhoneSize() 会 pack()，Swing 随后**异步**派发一次
+        //    componentResized → myEditViewMap.setArena()，它会重算 rtSize 并把 selNode.row 置 -1。
+        //    不排空 EDT，这一下会随机落在断言中间（长按 rtSize 的用例就因此间歇性失败）。
+        drainEdt();
     }
 
     @After

@@ -25,6 +25,7 @@ public class Phase4SecondaryViewTest {
     @Test
     public void testEditViewMapAndEditViewInit() {
         myEditView editView = new myEditView();
+        drainEdt();
         assertNotNull("myEditView frame should be instantiated", editView);
         assertNotNull("mMap canvas should be non-null", editView.mMap);
 
@@ -45,6 +46,7 @@ public class Phase4SecondaryViewTest {
     @Test
     public void testEditViewCanvasDrawingAndTransform() {
         myEditView editView = new myEditView();
+        drainEdt();
         assertNotNull("m_cArray should be allocated", editView.m_cArray);
 
         // Simulate drawing a wall element
@@ -110,5 +112,18 @@ public class Phase4SecondaryViewTest {
         mySplitLevelsFragment f2 = new mySplitLevelsFragment(null, null,
                 mySplitLevelsFragment.TYPE_CLIPBOARD, new java.util.ArrayList<String>());
         f2.stopSplit();
+    }
+
+    /**
+     * 排空 EDT 队列 —— {@code myEditView} 构造器里的 {@code UiWindow.applyPhoneSize()} 会 pack()，
+     * Swing 随后**异步**派发 componentResized → {@code myEditViewMap.setArena()}，
+     * 它会重算 rtSize/rtF… 并把 selNode.row 置 -1。不排空的话这一下会随机落在断言中间。
+     */
+    private static void drainEdt() {
+        try {
+            javax.swing.SwingUtilities.invokeAndWait(() -> { });
+            javax.swing.SwingUtilities.invokeAndWait(() -> { });
+        } catch (Exception ignored) {
+        }
     }
 }

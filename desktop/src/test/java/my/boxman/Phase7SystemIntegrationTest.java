@@ -85,6 +85,7 @@ public class Phase7SystemIntegrationTest {
     @Test
     public void testEditorToGameWorkflow() {
         myEditView editor = new myEditView();
+        drainEdt();
         assertNotNull("myEditView should be instantiated", editor);
 
         // Place elements in editor map
@@ -194,5 +195,18 @@ public class Phase7SystemIntegrationTest {
         assertNotNull("recog map initialized", recogView.getMap());
         assertNotNull("recog cell array initialized", recogView.getCellArray());
         recogView.dispose();
+    }
+
+    /**
+     * 排空 EDT 队列 —— {@code myEditView} 构造器里的 {@code UiWindow.applyPhoneSize()} 会 pack()，
+     * Swing 随后**异步**派发 componentResized → {@code myEditViewMap.setArena()}，
+     * 它会重算 rtSize/rtF… 并把 selNode.row 置 -1。不排空的话这一下会随机落在断言中间。
+     */
+    private static void drainEdt() {
+        try {
+            javax.swing.SwingUtilities.invokeAndWait(() -> { });
+            javax.swing.SwingUtilities.invokeAndWait(() -> { });
+        } catch (Exception ignored) {
+        }
     }
 }

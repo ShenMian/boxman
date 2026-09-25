@@ -103,9 +103,17 @@ public class Phase4BatchBTest {
         assertNotNull("关卡集列表 should exist", qDlg.lstSets);
 
         final boolean[] findDone = {false};
-        FindDialog fDlg = new FindDialog(null, (results, sim, ignoreBox) -> findDone[0] = true);
+        FindDialog fDlg = new FindDialog(null, (sets, sim, ans, sort, ignoreBox) -> findDone[0] = true);
         assertNotNull("FindDialog should be created", fDlg);
-        assertNotNull("sliderSimilarity should exist", fDlg.sliderSimilarity);
-        assertEquals("Default similarity should be 80%", 80, fDlg.sliderSimilarity.getValue());
+        assertNotNull("lstSets should exist", fDlg.lstSets);
+        assertNotNull("lstSimilarity should exist", fDlg.lstSimilarity);
+        assertNotNull("chkAns should exist", fDlg.chkAns);
+        assertNotNull("chkSort should exist", fDlg.chkSort);
+        assertNotNull("chkIgnoreBox should exist", fDlg.chkIgnoreBox);
+        assertTrue("全选 should default to checked", fDlg.chkAll.isSelected());
+        // find_dialog.xml 的相似度列表：100/95/90/85/80/75/66/50
+        assertEquals("相似度应有 8 档", 8, fDlg.lstSimilarity.getModel().getSize());
+        assertEquals("100", fDlg.lstSimilarity.getModel().getElementAt(0));
+        assertEquals("50", fDlg.lstSimilarity.getModel().getElementAt(7));
     }
 }

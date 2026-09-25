@@ -50,11 +50,10 @@ public class DialogSnapshotTool {
 
         Map<String, JDialog> dialogs = new LinkedHashMap<>();
         dialogs.put("d01-Goto", new GotoDialog(null, 5, 100, i -> {}));
-        dialogs.put("d02-Del", new DelDialog(null, "测试删除关卡", b -> {}));
         dialogs.put("d03-NewLevel", new NewLevelDialog(null, (r, c) -> {}));
         dialogs.put("d04-Rule", new RuleDialog(null, (c, m) -> {}));
         dialogs.put("d05-Color", new ColorDialog(null, Color.BLUE, c -> {}));
-        dialogs.put("d06-Find", new FindDialog(null, (list, sim, ignoreBox) -> {}));
+        dialogs.put("d06-Find", new FindDialog(null, (sets, sim, ans, sort, ib) -> {}));
         dialogs.put("d08-UrlInput", new UrlInputDialog(null, s -> {}));
         dialogs.put("d09-Query", new QueryDialog(null, r -> {}));
         dialogs.put("d11-GifMake", new myGifMakeDialog(null, "", 0, new boolean[8], new short[4]));

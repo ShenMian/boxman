@@ -106,6 +106,15 @@ public class myGridView extends JFrame {
     /** 「╋」在非「创编关卡」下弹出的两项菜单，供测试取用。 */
     private JPopupMenu addMenuForTest;
 
+    /** 上下文菜单最近一次打开时的「关卡序号」（原版 {@code m_Num}，长按/右键时赋值）。 */
+    int m_Num;
+
+    /** 上下文菜单里单选项的临时下标（原版 {@code mWhich}，迁出/复制关卡集时用）。 */
+    int mWhich;
+
+    /** 最后一次构建出的 14 项上下文菜单，供测试取用。 */
+    private JPopupMenu contextMenuForTest;
+
     public myGridView(long setId, String setTitle) {
         this.mSetId = setId;
         myMaps.m_Set_id = setId;
@@ -883,48 +892,648 @@ public class myGridView extends JFrame {
         }
 
         private void showContextMenu(MouseEvent e) {
-            // 原版是 registerForContextMenu + onCreateContextMenu —— Android 上下文菜单
-            // 与 ActionBar 溢出菜单共用 popup_menu_holo_dark 样式，所以必须走 HoloPopupMenu。
-            // ⚠️ 条目集合/标题仍是 PC 自造的，与原版 14 项不一致，见 PORTING_AUDIT.md 阶段 G。
-            JPopupMenu menu = HoloPopupMenu.create();
-            HoloPopupMenu.addItem(menu, "推此关卡", () -> openGame(node, index));
-            HoloPopupMenu.addItem(menu, "编辑关卡...", () -> {
-                myMaps.curMap = node;
-                new myEditView().setVisible(true);
-            });
-            HoloPopupMenu.addItem(menu, "导出关卡...", () -> {
-                myMaps.curMap = node;
-                new myExport().setVisible(true);
-            });
-            HoloPopupMenu.addItem(menu, "复制 XSB 到剪贴板", () -> {
-                if (node.Map != null) {
-                    try {
-                        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
-                                new java.awt.datatransfer.StringSelection(node.Map), null);
-                        MyToast.showToast(myGridView.this, "已复制第 " + (index + 1) + " 关 XSB 数据！",
-                                MyToast.LENGTH_SHORT);
-                    } catch (Exception ignored) {
+            // 原版是 registerForContextMenu + onCreateContextMenu + ItemLongClickListener ——
+            // Android 上下文菜单与 ActionBar 溢出菜单共用 popup_menu_holo_dark 样式，
+            // 所以必须走 HoloPopupMenu（见 Phase20MenuCarrierConventionTest）。
+            m_Num = index;
+            JPopupMenu menu = buildContextMenu();
+            contextMenuForTest = menu;
+            menu.show(this, e.getX(), e.getY());
+        }
+    }
+
+    // ---------------------------------------------------------------- 上下文菜单（14 项）
+
+    /** 原版 {@code onCreateContextMenu()} 的 14 项标题，顺序一致。 */
+    static final String[] CONTEXT_ITEMS = {
+            "打开", "改编为新关卡", "图标加锁", "迁出关卡至...", "复制关卡到...", "导出...",
+            "移动到...", "前移", "后移", "删除", "查找相似关卡", "连续选择至...", "反选", "详细..."};
+
+    /**
+     * 构建上下文菜单 —— 原版 {@code onCreateContextMenu()}（14 项）+ 原版
+     * {@code ItemLongClickListener}（按关卡集类型与多选状态逐项设可见性）的合并实现。
+     *
+     * <p>可见性矩阵（{@code vis[0..13]} 依次对应 {@link #CONTEXT_ITEMS}）：
+     * <pre>
+     * 最近推过的关卡 0,1,5,10,13 ｜ 创编关卡 1,9,10,13 ｜ 关卡查询 / 相似关卡 / 内置组 0,1,4,5,10,13
+     * 扩展关卡组（m_Sets[0]==3） 0..10 + 13
+     * 多选模式下：1/5/10 强制隐藏，11/12 显示；否则 1 显示，11/12 隐藏，
+     *             且 5（导出）在「创编关卡」下、10（查找相似关卡）在「相似关卡」下保持隐藏
+     * </pre>
+     * 另外两处标题改写：创编关卡下第 2 项变「编辑」；扩展关卡组下关卡已加锁时第 3 项变「图标解锁」。
+     */
+    JPopupMenu buildContextMenu() {
+        boolean[] vis = new boolean[CONTEXT_ITEMS.length];
+        String[] titles = CONTEXT_ITEMS.clone();
+        String f = myMaps.sFile;
+
+        if ("创编关卡".equals(f)) {
+            titles[1] = "编辑";
+        } else if (myMaps.m_Sets[0] == 3 && myMaps.m_lstMaps != null
+                && m_Num >= 0 && m_Num < myMaps.m_lstMaps.size()
+                && myMaps.m_lstMaps.get(m_Num).Lock) {
+            titles[2] = "图标解锁";
+        }
+
+        if ("最近推过的关卡".equals(f)) {
+            vis[0] = vis[1] = vis[5] = vis[10] = vis[13] = true;
+        } else if ("创编关卡".equals(f)) {
+            vis[1] = vis[9] = vis[10] = vis[13] = true;
+        } else if ("关卡查询".equals(f)) {
+            vis[0] = vis[1] = vis[4] = vis[5] = vis[10] = vis[13] = true;
+        } else if ("相似关卡".equals(f)) {
+            vis[0] = vis[1] = vis[4] = vis[5] = vis[13] = true;
+        } else if (myMaps.m_Sets[0] == 3) {          // 扩展关卡组
+            for (int i = 0; i <= 10; i++) vis[i] = true;
+            vis[13] = true;
+        } else {                                     // 内置关卡组
+            vis[0] = vis[1] = vis[4] = vis[5] = vis[10] = vis[13] = true;
+        }
+
+        if (myMaps.isSelect) {                       // 多选模式
+            vis[1] = false;                          // 改编为新关卡（或编辑）
+            vis[5] = false;                          // 导出...
+            vis[10] = false;                         // 查找相似关卡
+            vis[11] = true;                          // 连续选择...
+            vis[12] = true;                          // 反选
+        } else {
+            vis[1] = true;
+            if (!"创编关卡".equals(f)) vis[5] = true;
+            if (!"相似关卡".equals(f)) vis[10] = true;
+            vis[11] = false;
+            vis[12] = false;
+        }
+
+        JPopupMenu menu = HoloPopupMenu.create();
+        for (int i = 0; i < titles.length; i++) {
+            final int itemId = i + 1;
+            HoloPopupMenu.Row row = HoloPopupMenu.addItem(menu, titles[i],
+                    () -> onContextItemSelected(itemId));
+            row.setVisible(vis[i]);
+        }
+        menu.revalidate();
+        menu.repaint();
+        return menu;
+    }
+
+    /**
+     * 原版 {@code onContextItemSelected(MenuItem)} 的等价物：按菜单项 id（1..14）执行动作。
+     * 用 {@link #m_Num} 定位关卡，拆成独立方法以便测试直接调用（不必真弹菜单）。
+     *
+     * @return 恒为 {@code true}（原版如此）
+     */
+    boolean onContextItemSelected(int itemId) {
+        switch (itemId) {
+            case 1:   // 打开
+                if ("相似关卡".equals(myMaps.sFile)) {
+                    myMaps.iskinChange = false;
+                    myMaps.curMap = myMaps.m_lstMaps.get(m_Num);
+                    new myFindView().setVisible(true);
+                } else {
+                    // 原版这里直接 startActivity(myGameView)；PC 的 openGame() 额外带上了
+                    // 「无效关卡 → 显示备注」的保护（对应原版 ItemClickListener 的同名分支）
+                    openGame(myMaps.m_lstMaps.get(m_Num), m_Num);
+                }
+                break;
+
+            case 2:   // 改编为新关卡 / 编辑
+                editAsNewLevel();
+                break;
+
+            case 3:   // 图标加锁 / 图标解锁
+                if (myMaps.m_lstMaps.get(m_Num).P_id < 0) break;   // 相似查找中答案表的关卡
+                mapNode lockNd = myMaps.m_lstMaps.get(m_Num);
+                lockNd.Lock = !lockNd.Lock;
+                mySQLite.m_SQL.Update_L_Lock(lockNd.Level_id, lockNd.Lock ? 1 : 0);
+                refreshGrid();
+                break;
+
+            case 4:   // 迁出关卡至...
+                migrateToSet(true);
+                break;
+
+            case 5:   // 复制关卡到...
+                migrateToSet(false);
+                break;
+
+            case 6:   // 导出...
+                exportCurrent();
+                break;
+
+            case 7:   // 移动到...
+                onMoveTo();
+                break;
+
+            case 8:   // 前移
+                onShift(-1);
+                break;
+
+            case 9:   // 后移
+                onShift(1);
+                break;
+
+            case 10:  // 删除
+                onDeleteOne();
+                break;
+
+            case 11:  // 查找相似关卡
+                onFindSimilar();
+                break;
+
+            case 12:  // 连续选择至...
+                onSelectRange();
+                break;
+
+            case 13:  // 反选
+                for (mapNode nd : myMaps.m_lstMaps) {
+                    nd.Select = !nd.Select;
+                }
+                setSelectAll();   // 设置全选开关状态
+                refreshGrid();
+                break;
+
+            case 14:  // 详细...
+                myMaps.iskinChange = false;
+                myMaps.curMap = myMaps.m_lstMaps.get(m_Num);
+                new myAbout2(this, myMaps.curMap).setVisible(true);
+                break;
+
+            default:
+                break;
+        }
+        return true;
+    }
+
+    /**
+     * 原版 {@code case 2}「改编为新关卡 / 编辑」。
+     *
+     * <p>{@code nd.Level_id > 0} 表示这是库里已有的关卡 → 「改编为新关卡」：换一个新文档名、
+     * 标题以原标题为本（空标题则用「关卡集名_序号」），{@code curMapNum = -3}；
+     * 否则（创编关卡）→「编辑」，{@code curMapNum = m_Num}。
+     */
+    void editAsNewLevel() {
+        mapNode nd = myMaps.m_lstMaps.get(m_Num);
+        boolean flg9 = true;   // 是否有效关卡
+
+        if (nd.Level_id > 0) {
+            // 为关卡生成关卡文档名称（含有原关卡集及其关卡序号信息）
+            SimpleDateFormat df = new SimpleDateFormat("yyyyMMdd_HHmmss");
+            String fn = "NewLevel_" + df.format(new Date()) + ".XSB";
+
+            // 若关卡标题不空，则以关卡标题为本；否则以关卡集名及其序号为本
+            String newTitle = nd.Title.trim().isEmpty()
+                    ? myMaps.sFile + "_" + (m_Num + 1)
+                    : nd.Title.trim();
+
+            recycleBitmapCaches(0, myMaps.m_lstMaps.size());
+            myMaps.read_DirBuilder();   // 重新加载「创编关卡」文件夹中的关卡列表
+            applyMenu();                // 原版 setMenu(MyMenu)：调整菜单项
+
+            myMaps.curMapNum = -3;      // 「改编为新关卡」状态，列表中已有关卡图标
+            nd.fileName = fn;           // 关卡保存时的文档名称
+            if ("--".equals(nd.Map)) {  // 无效关卡
+                myMaps.loadXSB(nd.Comment);
+                flg9 = false;
+            }
+            nd.Title = newTitle;
+            nd.Comment = "";
+        } else {
+            myMaps.curMapNum = m_Num;   // 「继续编辑」状态
+        }
+
+        if (flg9) {
+            myMaps.curMap = new mapNode(nd.Rows, nd.Cols,
+                    nd.Map.split("\r\n|\n\r|\n|\r|\\|"), nd.Title, nd.Author, nd.Comment);
+        }
+        myMaps.curMap.fileName = nd.fileName;   // 取得当前关卡文档名
+        new myEditView().setVisible(true);
+    }
+
+    /**
+     * 原版 {@code case 4}/{@code case 5}「迁出关卡至... / 复制关卡到...」的合并实现：
+     * 弹一个「关卡集列表 + 末尾自动追加一个新建关卡集」的单选对话框。
+     *
+     * @param move {@code true} = 迁出（源关卡集里删掉）；{@code false} = 复制（源关卡集保留）
+     */
+    void migrateToSet(boolean move) {
+        String title = prepareMigrateSelection(move);
+
+        String[] items = new String[myMaps.mSets3.size() + 1];
+        for (int k = 0; k < myMaps.mSets3.size(); k++) {
+            items[k] = myMaps.mSets3.get(k).title;
+        }
+        items[items.length - 1] = myMaps.getNewSetName();   // 末尾，自动加上一个新的关卡集
+
+        mWhich = 0;
+        HoloChoiceDialog.selectThenOk(this, title, null, items, 0, which -> {
+            mWhich = which;
+            applyMigrate(move, items);
+        }).setVisible(true);
+    }
+
+    /**
+     * 「迁出 / 复制」前的选择收集 —— 原版 {@code case 4}/{@code case 5} 里算
+     * {@code str}/{@code str2} 的那一段（会填好 {@code myMaps.mArray}）。
+     *
+     * @return 对话框标题
+     */
+    String prepareMigrateSelection(boolean move) {
+        myMaps.mArray.clear();
+        myMaps.curMap = null;
+
+        String title;
+        if (myMaps.isSelect && myMaps.m_lstMaps.get(m_Num).Select) {   // 多关卡
+            for (int k = 0; k < myMaps.m_lstMaps.size(); k++) {
+                if (myMaps.m_lstMaps.get(k).Select) {
+                    myMaps.mArray.add(k);
+                }
+            }
+            title = "共 " + myMaps.mArray.size() + " 个关卡" + (move ? "迁至" : "复制到");
+        } else {                                                       // 单关卡
+            myMaps.mArray.add(m_Num);
+            title = (m_Num + 1) + " 号关卡" + (move ? "迁至" : "复制到");
+        }
+        return title;
+    }
+
+    /** 「迁出/复制」对话框点「确定」后的动作（原版那个 {@code onClick}）。 */
+    void applyMigrate(boolean move, String[] items) {
+        // 如果选中的是最后一个「新建关卡集」
+        if (mWhich == items.length - 1) {
+            try {
+                long newId = mySQLite.m_SQL.add_T(3, items[items.length - 1], "", "");
+                set_Node nd = new set_Node();
+                nd.id = newId;
+                nd.title = items[items.length - 1];
+                myMaps.mSets3.add(nd);
+            } catch (Exception e) {
+                MyToast.showToast(this, "新关卡集创建失败: " + items[items.length - 1], MyToast.LENGTH_SHORT);
+                return;
+            }
+        }
+        if (mWhich < 0) return;
+
+        long sId = myMaps.mSets3.get(mWhich).id;
+        long sId2 = mySQLite.m_SQL.get_Level_Set_id(myMaps.m_lstMaps.get(m_Num).Level_id);
+        if (sId == sId2) {
+            MyToast.showToast(this, "请选择新的关卡集！", MyToast.LENGTH_SHORT);
+            return;
+        }
+
+        try {
+            int len = myMaps.m_lstMaps.size();
+            for (int k = 0; k < myMaps.mArray.size(); k++) {
+                int idx = myMaps.mArray.get(k);
+                if (move) idx -= k;   // 迁出时前面的元素已被移除，下标要跟着前移
+                long newId = mySQLite.m_SQL.add_L(sId, myMaps.m_lstMaps.get(idx));
+                // 将关卡的状态带过去
+                mySQLite.m_SQL.Update_A_Lid(myMaps.m_lstMaps.get(idx).Level_id, newId);
+                if (move) {
+                    mySQLite.m_SQL.del_L(myMaps.m_lstMaps.get(idx).Level_id);
+                    myMaps.m_lstMaps.remove(idx);
+                }
+            }
+            if (move) {
+                recycleBitmapCaches(0, len);
+                setSelectAll();   // 设置全选开关状态
+                refreshGrid();
+                MyToast.showToast(this, "迁出成功！", MyToast.LENGTH_SHORT);
+            } else {
+                MyToast.showToast(this, "复制成功！", MyToast.LENGTH_SHORT);
+            }
+        } catch (Exception e) {
+            MyToast.showToast(this, move ? "出错了，迁出失败！" : "出错了，复制失败！", MyToast.LENGTH_SHORT);
+        }
+    }
+
+    /** 原版 {@code case 6}「导出...」：组装关卡初态 + 答案后开 {@link myExport}。 */
+    void exportCurrent() {
+        StringBuilder sXSB = new StringBuilder();    // 关卡初态
+        StringBuilder sLurd = new StringBuilder();   // Lurd
+
+        myMaps.curMap = myMaps.m_lstMaps.get(m_Num);
+        if ("无效关卡".equals(myMaps.curMap.Title)) {
+            sXSB.append(myMaps.curMap.Comment);
+        } else {
+            sXSB.append(myMaps.curMap.Map)
+                    .append("\nTitle: ").append(myMaps.curMap.Title)
+                    .append("\nAuthor: ").append(myMaps.curMap.Author);
+            if (!myMaps.curMap.Comment.trim().isEmpty()) {
+                sXSB.append("\nComment:\n").append(myMaps.curMap.Comment).append("\nComment-End:");
+            }
+            myMaps.isComment = false;   // 答案备注信息
+            if (myMaps.curMap.Solved) { // 导出答案
+                myMaps.isComment = true;
+                sLurd.append(mySQLite.m_SQL.get_Ans(myMaps.curMap.key));
+            }
+        }
+
+        // 原版 Bundle：m_XSB / LOCAL=null（表示浏览界面的导出）/ m_Lurd / is_ANS=true
+        new myExport(sXSB.toString(), sLurd.toString(), null, null, true, 0, null, null, null)
+                .setVisible(true);
+    }
+
+    /** 原版 {@code case 7}「移动到...」：输入目标序号，把当前关卡移过去。 */
+    void onMoveTo() {
+        myMaps.curMap = null;
+        int total = myMaps.m_lstMaps.size();
+
+        JSpinner spTo = HoloContent.spinner(72, m_Num + 1, 1, Math.max(1, total));
+        // 原版 goto_dialog.xml 的 setMessage(...)：显示在自定义视图之上
+        JLabel msg = HoloContent.label("<html>移动范围：1 -- " + total
+                + "<br>（大于 " + total + " 时则移到尾部）</html>");
+        JComponent body = HoloContent.column(msg,
+                HoloContent.row(HoloContent.label("移动到: ", 56, SwingConstants.LEFT), spTo));
+
+        HoloViewDialog dlg = new HoloViewDialog(this, "将 " + (m_Num + 1) + " 号关卡移到", body);
+        dlg.addButton("取消", dlg::dispose);
+        dlg.addButton("确定", () -> {
+            int n = (Integer) spTo.getValue();
+            dlg.dispose();
+            moveTo(n);
+        });
+        dlg.setVisible(true);
+    }
+
+    /** 「移动到...」的实际移动（原版 {@code onClick} 与 ENTER 键处理共用的一段）。 */
+    void moveTo(int n) {
+        int total = myMaps.m_lstMaps.size();
+        if (n > total) n = total;                 // 大于总数则移到尾部
+        if (n <= 0 || n - 1 == m_Num) return;     // 位置没变，什么都不做
+
+        try {
+            swap(myMaps.m_lstMaps, m_Num, n - 1);
+            if (n - 1 < m_Num) {
+                recycleBitmapCaches(n - 1, m_Num + 1);
+            } else {
+                recycleBitmapCaches(m_Num, n + 1);
+            }
+            updateNO();   // 关卡顺序改变
+            refreshGrid();
+        } catch (Exception e) {
+            MyToast.showToast(this, "出错了，移动失败！", MyToast.LENGTH_SHORT);
+        }
+    }
+
+    /**
+     * 原版 {@code case 8}/{@code case 9}「前移 / 后移」的合并实现。
+     *
+     * @param dir {@code -1} = 前移，{@code +1} = 后移
+     */
+    void onShift(int dir) {
+        myMaps.curMap = null;
+        myMaps.mArray.clear();
+        boolean flg = true;   // 被选中的关卡是否集中在一起
+
+        if (myMaps.isSelect && myMaps.m_lstMaps.get(m_Num).Select) {
+            if (dir < 0) {    // 前移：从小到大遍历
+                for (int k = 0; k < myMaps.m_lstMaps.size(); k++) {
+                    if (myMaps.m_lstMaps.get(k).Select) {
+                        if (flg && !myMaps.mArray.isEmpty()
+                                && myMaps.mArray.get(myMaps.mArray.size() - 1) + 1 < k) {
+                            flg = false;   // 分散不集中
+                        }
+                        myMaps.mArray.add(k);
                     }
                 }
-            });
-            HoloPopupMenu.addSeparator(menu);
-            HoloPopupMenu.addItem(menu, "关卡详细信息...",
-                    () -> new myAbout2(myGridView.this, node).setVisible(true));
-            HoloPopupMenu.addItem(menu, "删除此关卡...", () -> {
-                DelDialog dlg = new DelDialog(null, node.Title, delAns -> {
-                    if (mySQLite.m_SQL != null && node.Level_id > 0) {
-                        mySQLite.m_SQL.del_L(node.Level_id);
-                        if (delAns) {
-                            mySQLite.m_SQL.del_S_ALL(node.Level_id);
+            } else {          // 后移：从大到小遍历
+                for (int k = myMaps.m_lstMaps.size() - 1; k >= 0; k--) {
+                    if (myMaps.m_lstMaps.get(k).Select) {
+                        if (flg && !myMaps.mArray.isEmpty()
+                                && myMaps.mArray.get(myMaps.mArray.size() - 1) - 1 > k) {
+                            flg = false;   // 分散不集中
                         }
-                        myMaps.m_lstMaps.remove(node);
-                        refreshGrid();
+                        myMaps.mArray.add(k);
                     }
-                });
-                dlg.setVisible(true);
-            });
+                }
+            }
+        } else {
+            myMaps.mArray.add(m_Num);   // 单关卡时 flg 默认为集中状态
+        }
 
-            menu.show(this, e.getX(), e.getY());
+        int toNum, p;
+        if (!flg) {   // 关卡多且分散：先让出第一个位置
+            toNum = myMaps.mArray.get(0) - dir;
+            p = 1;
+        } else {      // 单个关卡或已经集中在一起
+            toNum = myMaps.mArray.get(0) + dir;
+            p = 0;
+        }
+
+        // 有空位可移动
+        if (dir < 0 ? toNum >= 0 : toNum < myMaps.m_lstMaps.size()) {
+            for (int k = p; k < myMaps.mArray.size(); k++) {
+                swap(myMaps.m_lstMaps, myMaps.mArray.get(k), toNum);
+                toNum -= dir;
+            }
+            updateNO();   // 关卡顺序改变
+            if (dir < 0) {
+                recycleBitmapCaches(myMaps.mArray.get(0) - 1,
+                        myMaps.mArray.get(myMaps.mArray.size() - 1) + 1);
+            } else {
+                recycleBitmapCaches(myMaps.mArray.get(myMaps.mArray.size() - 1),
+                        myMaps.mArray.get(0) + 2);
+            }
+            refreshGrid();
+        }
+    }
+
+    /** 原版 {@code case 10}「删除」：确认后删单个或全部选中的关卡。 */
+    void onDeleteOne() {
+        HoloConfirmDialog.show(this, prepareDeleteSelection(), this::deleteSelected);
+    }
+
+    /**
+     * 「删除」前的选择收集 —— 原版 {@code case 10} 里算 {@code str3} 的那一段。
+     * 拆出来是为了让用例不必弹确认框也能验证选择逻辑。
+     *
+     * @return 确认框的提示文字
+     */
+    String prepareDeleteSelection() {
+        myMaps.mArray.clear();
+        String msg;
+        if (myMaps.isSelect && myMaps.m_lstMaps.get(m_Num).Select) {
+            for (int k = myMaps.m_lstMaps.size() - 1; k >= 0; k--) {
+                if (myMaps.m_lstMaps.get(k).Select) {
+                    myMaps.mArray.add(k);
+                }
+            }
+            msg = "共有 " + myMaps.mArray.size() + " 个关卡将被删除，\n确认吗？";
+        } else {
+            myMaps.mArray.add(m_Num);
+            msg = (m_Num + 1) + " 号关卡将被删除，确认吗？";
+        }
+        return msg;
+    }
+
+    /** 「删除」确认后的动作（原版那个 {@code onClick}）。 */
+    void deleteSelected() {
+        myMaps.curMap = null;
+        int len = myMaps.m_lstMaps.size();
+        for (int k = 0; k < myMaps.mArray.size(); k++) {
+            int idx = myMaps.mArray.get(k);
+            if ("创编关卡".equals(myMaps.sFile)) {
+                File file = new File(myMaps.sRoot + myMaps.sPath + "创编关卡/"
+                        + myMaps.m_lstMaps.get(idx).fileName);
+                if (file.exists() && file.isFile()) file.delete();
+            } else {
+                mySQLite.m_SQL.del_L(myMaps.m_lstMaps.get(idx).Level_id);
+            }
+            myMaps.m_lstMaps.remove(idx);
+        }
+        recycleBitmapCaches(0, len);
+        setSelectAll();   // 设置全选开关状态
+        refreshGrid();
+    }
+
+    /** 原版 {@code case 11}「查找相似关卡」：弹 {@link FindDialog}。 */
+    void onFindSimilar() {
+        new FindDialog(this, this::startFind).setVisible(true);
+    }
+
+    /**
+     * {@link FindDialog} 点「开始」后的动作 —— 原版那段
+     * {@code if (mDialog == null) { ... myMaps.oldMap = ...; mDialog.show(...) }}。
+     *
+     * <p>进入前必须先把<b>源关卡</b>塞进 {@code myMaps.oldMap}（{@link myFindView} 与
+     * {@link myFindFragment} 都读它）。
+     */
+    void startFind(long[] sets, int similarity, boolean ans, boolean sort, boolean ignoreBox) {
+        prepareFindSource();
+        applyMenu();   // 原版 setMenu(MyMenu)
+        new myFindFragment(this, this::onFindDone, sets, similarity, ans, sort, ignoreBox).show();
+    }
+
+    /**
+     * 进入查找前先把<b>源关卡</b>塞进 {@code myMaps.oldMap}
+     * （{@link myFindView} 与 {@link myFindFragment} 都读它）。
+     *
+     * <p>「创编关卡」下源关卡不是库里的关卡，所以要按自由关卡重新造一个，
+     * 并把 {@code Map0} 直接等于 {@code Map}、{@code Num} 记成序号。
+     */
+    void prepareFindSource() {
+        myMaps.curMap = myMaps.m_lstMaps.get(m_Num);
+
+        if ("创编关卡".equals(myMaps.sFile)) {
+            myMaps.oldMap = new mapNode(0, -1, myMaps.curMap.Rows, myMaps.curMap.Cols,
+                    myMaps.curMap.Map, myMaps.curMap.Title, myMaps.curMap.Author,
+                    myMaps.curMap.Comment, myMaps.curMap.Map);
+            myMaps.oldMap.Map0 = myMaps.oldMap.Map;
+            myMaps.oldMap.Num = m_Num + 1;   // 关卡序号
+        } else {
+            myMaps.oldMap = new mapNode(myMaps.curMap.Level_id, myMaps.curMap.P_id,
+                    myMaps.curMap.Rows, myMaps.curMap.Cols, myMaps.curMap.Map,
+                    myMaps.curMap.Title, myMaps.curMap.Author, myMaps.curMap.Comment,
+                    myMaps.curMap.Map0);
+        }
+    }
+
+    /** 原版 {@code myGridView.onFindDone()}：把查找结果换成当前列表。 */
+    public void onFindDone(java.util.ArrayList<mapNode> mlMaps) {
+        if (mlMaps != null && !mlMaps.isEmpty()) {
+            int n = myMaps.m_lstMaps.size();
+            myMaps.curMap = null;
+            myMaps.m_lstMaps.clear();
+            recycleBitmapCaches(0, n);
+            myMaps.sFile = "相似关卡";
+            applyMenu();   // 原版 setMenu(MyMenu)：调整菜单项
+            myMaps.m_Set_id = -1;
+            myMaps.J_Title = myMaps.sFile;
+            myMaps.J_Author = "";
+            myMaps.J_Comment = "";
+            myMaps.m_lstMaps = mlMaps;
+            my_SetTitle();
+            refreshGrid();
+            scrollToPosition(true);   // 原版 mGridView.setSelection(0)
+        } else {
+            MyToast.showToast(this, "没有发现相似的关卡！", MyToast.LENGTH_SHORT);
+        }
+    }
+
+    /** 原版 {@code case 12}「连续选择至...」：输入序号，把 [m_Num+1, n] 区间全选。 */
+    void onSelectRange() {
+        int total = myMaps.m_lstMaps.size();
+        JSpinner spTo = HoloContent.spinner(72, m_Num + 1, 1, Math.max(1, total));
+        JLabel msg = HoloContent.label("<html>从第 " + (m_Num + 1)
+                + " 号关卡，向前或向后连选至：</html>");
+        JComponent body = HoloContent.column(msg,
+                HoloContent.row(HoloContent.label("连选至: ", 56, SwingConstants.LEFT), spTo));
+
+        HoloViewDialog dlg = new HoloViewDialog(this, "连续选择", body);
+        dlg.addButton("取消", dlg::dispose);
+        dlg.addButton("确定", () -> {
+            int n = (Integer) spTo.getValue();
+            dlg.dispose();
+            selectRange(n);
+        });
+        dlg.setVisible(true);
+    }
+
+    /** 「连续选择至...」的实际动作（原版 {@code onClick} 里那段，含越界钳制与 Toast）。 */
+    void selectRange(int n) {
+        try {
+            if (n < 1) n = 1;
+            else if (n > myMaps.m_lstMaps.size()) n = myMaps.m_lstMaps.size();
+
+            int from = m_Num + 1, to = m_Num + 1;
+            if (n < from) {
+                from = n;
+            } else if (n > to) {
+                to = n;
+            }
+            for (int k = from; k <= to; k++) {
+                myMaps.m_lstMaps.get(k - 1).Select = true;
+            }
+            setSelectAll();   // 设置全选开关状态
+            refreshGrid();
+        } catch (Throwable ex) {
+            MyToast.showToast(this, "关卡序号不正确！", MyToast.LENGTH_SHORT);
+        }
+    }
+
+    // ---------------------------------------------------------------- 上下文菜单用的小工具
+
+    /**
+     * 原版 {@code myGridView.swap(List, int, int)}：把 {@code oldPosition} 处的元素
+     * 一路交换到 {@code newPosition}（其余元素依次让位，不是单纯互换）。
+     */
+    static <T> void swap(java.util.List<T> list, int oldPosition, int newPosition) {
+        if (list == null) {
+            throw new IllegalStateException("The list can not be empty...");
+        }
+        if (oldPosition < newPosition) {        // 向前移动，前面的元素需要向后移动
+            for (int i = oldPosition; i < newPosition; i++) {
+                Collections.swap(list, i, i + 1);
+            }
+        }
+        if (oldPosition > newPosition) {        // 向后移动，后面的元素需要向前移动
+            for (int i = oldPosition; i > newPosition; i--) {
+                Collections.swap(list, i, i - 1);
+            }
+        }
+    }
+
+    /** 原版 {@code myGridView.updateNO()}：关卡顺序改变后把序号写回数据库。 */
+    void updateNO() {
+        int len = myMaps.m_lstMaps.size();
+        for (int k = 0; k < len; k++) {
+            mySQLite.m_SQL.Set_L_NO(myMaps.m_lstMaps.get(k).Level_id, k + 1);
+        }
+    }
+
+    /**
+     * 原版 {@code myGridView.recycleBitmapCaches(int, int)}：释放 {@code [from, to)}
+     * 区间内关卡缩略图的缓存（Android 侧是 {@code Bitmap.recycle()} 防 OOM）。
+     *
+     * <p>PC 的缩略图缓存以「关卡 key + Level_id + 尺寸」为键、不按下标存放，所以这里按
+     * <b>该区间内关卡对应的缓存键</b> 来删，语义一致。
+     */
+    void recycleBitmapCaches(int fromPosition, int toPosition) {
+        if (myMaps.m_lstMaps == null) return;
+        for (int i = Math.max(0, fromPosition); i < toPosition && i < myMaps.m_lstMaps.size(); i++) {
+            mapNode nd = myMaps.m_lstMaps.get(i);
+            String prefix = nd.key + "_" + nd.Level_id + "_";
+            thumbCache.keySet().removeIf(k -> k.startsWith(prefix));
         }
     }
 
