@@ -258,6 +258,28 @@ public final class HoloContent {
         return c;
     }
 
+    /**
+     * {@code CustomCheckboxTheme} 的复选框，宽度按内容算 —— 等价于原版布局里的
+     * {@code android:layout_width="wrap_content"}。
+     *
+     * <p><b>别拿 {@link #check32} 的固定宽度凑合</b>：宽度不足时 Swing 会把文字截成省略号，
+     * 而原版是「32dp 位图 + 4dp iconTextGap + 文字 + 4dp 右 padding」自然撑开。
+     */
+    public static JCheckBox wrapCheck(String text, boolean selected) {
+        return wrapCheck(text, selected, TEXT_SIZE);
+    }
+
+    /** 同上，可指定字号（原版 {@code myActGMView} 那一排用的是 18sp）。 */
+    public static JCheckBox wrapCheck(String text, boolean selected, int textSize) {
+        Font f = new Font("Microsoft YaHei", Font.PLAIN, textSize);
+        JCheckBox probe = new JCheckBox();
+        // 位图 32dp + iconTextGap 4dp + 文字 + 右侧 padding 4dp
+        int w = CHECK_ICON + FIELD_PAD + probe.getFontMetrics(f).stringWidth(text) + FIELD_PAD;
+        JCheckBox c = check32(text, selected, w);
+        c.setFont(f);
+        return c;
+    }
+
     /** {@code cb_normal} / {@code cb_pressed} 位图 → 32dp 图标。 */
     private static Icon checkboxIcon(boolean checked) {
         java.awt.image.BufferedImage src =

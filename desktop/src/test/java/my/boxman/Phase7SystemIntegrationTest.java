@@ -137,10 +137,15 @@ public class Phase7SystemIntegrationTest {
         mapNode imported = myMaps.m_lstMaps.get(0);
         assertEquals("Title should match", "Lifecycle Level", imported.Title);
 
-        // 4. Export logic
-        CountDownLatch latch = new CountDownLatch(1);
-        ExportDialog expDlg = new ExportDialog(null, msg -> latch.countDown());
-        assertNotNull("ExportDialog initialized", expDlg);
+        // 4. Export logic —— 走原版的 myExportFragment（sel_Set2 的「确定」最终调用它）
+        new File(myMaps.sRoot + myMaps.sPath + "导出/").mkdirs();
+        File exported = new File(myMaps.sRoot + myMaps.sPath + "导出/test_lifecycle.xsb");
+        exported.delete();   // 上一次跑留下的同名文档会让本次报「...跳过」
+        myExportFragment exporter = new myExportFragment(null, null, false, false, true,
+                new long[]{setId});
+        String inf = exporter.runNow();
+        assertTrue("Export should report OK, got: " + inf, inf.contains("...OK"));
+        assertTrue("Exported document should exist", exported.exists());
 
         // 5. Delete level
         sql.del_L(imported.Level_id);

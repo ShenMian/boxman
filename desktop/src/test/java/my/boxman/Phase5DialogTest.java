@@ -102,14 +102,10 @@ public class Phase5DialogTest {
     }
 
     @Test
-    public void testExportDialog() {
-        final String[] message = new String[1];
-        ExportDialog dlg = new ExportDialog(null, msg -> message[0] = msg);
-
-        assertNotNull("ExportDialog should be created", dlg);
-        assertNotNull("modelSets should be populated", dlg.modelSets);
-        assertNotNull("chkIncludeAns should exist", dlg.chkIncludeAns);
-        assertTrue("chkIncludeAns should default to true", dlg.chkIncludeAns.isSelected());
+    public void testExportFragmentRejectsMissingSetList() {
+        // 原版 myExportFragment.doInBackground 的第一道闸门：mySets == null
+        myExportFragment f = new myExportFragment(null, null, false, false, false, null);
+        assertEquals("没有可导出的内容！", f.runNow());
     }
 
     @Test

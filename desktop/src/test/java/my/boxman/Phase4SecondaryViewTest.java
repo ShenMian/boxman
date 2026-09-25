@@ -4,9 +4,6 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.io.File;
-import java.util.Collections;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.*;
 
@@ -104,23 +101,14 @@ public class Phase4SecondaryViewTest {
     }
 
     @Test
-    public void testSplitDialogWorker() throws Exception {
-        CountDownLatch latch = new CountDownLatch(1);
-        final String[] resultHolder = new String[1];
+    public void testSplitLevelsFragmentRejectsMissingArguments() {
+        // 原版 doInBackground 的第一道闸门：myType < 0 || myFiles == null
+        mySplitLevelsFragment f = new mySplitLevelsFragment(null, null, -1, null);
+        assertEquals("没有可解析的内容！", f.runNow());
 
-        SplitDialog dlg = new SplitDialog(null, 0, Collections.emptyList(), result -> {
-            resultHolder[0] = result;
-            latch.countDown();
-        });
-
-        assertNotNull("SplitDialog should be created", dlg);
-        assertNotNull("ProgressBar should be created", dlg.progressBar);
-
-        // Execute worker directly in background
-        dlg.startImport();
-        boolean completed = latch.await(5, TimeUnit.SECONDS);
-        assertTrue("Import worker should complete within timeout", completed);
-        assertNotNull("Result message should be non-null", resultHolder[0]);
-        assertTrue("Result message should indicate success", resultHolder[0].contains("导入成功"));
+        // 取消一次不应抛异常（原版 stopSplit 只是置标志 + 回调）
+        mySplitLevelsFragment f2 = new mySplitLevelsFragment(null, null,
+                mySplitLevelsFragment.TYPE_CLIPBOARD, new java.util.ArrayList<String>());
+        f2.stopSplit();
     }
 }

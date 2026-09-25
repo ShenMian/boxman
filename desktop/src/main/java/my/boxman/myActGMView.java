@@ -233,13 +233,7 @@ public class myActGMView extends JDialog {
      * 别照抄 {@link HoloContent#check32} 的固定宽度 —— 18sp 的中文按固定宽度会被省略号截掉。
      */
     private static JCheckBox bigCheck(String text, boolean selected, int textSize) {
-        Font f = new Font("Microsoft YaHei", Font.PLAIN, textSize);
-        JCheckBox probe = new JCheckBox();
-        // 位图 32dp + iconTextGap 4dp + 文字 + 右侧 padding 4dp
-        int w = 32 + 4 + probe.getFontMetrics(f).stringWidth(text) + 4;
-        JCheckBox c = HoloContent.check32(text, selected, w);
-        c.setFont(f);
-        return c;
+        return HoloContent.wrapCheck(text, selected, textSize);
     }
 
     private static JButton makeButton(String text, int widthDp) {

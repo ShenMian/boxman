@@ -55,11 +55,28 @@ public class DialogSnapshotTool {
         dialogs.put("d04-Rule", new RuleDialog(null, (c, m) -> {}));
         dialogs.put("d05-Color", new ColorDialog(null, Color.BLUE, c -> {}));
         dialogs.put("d06-Find", new FindDialog(null, (list, sim, ignoreBox) -> {}));
-        dialogs.put("d07-Export", new ExportDialog(null, s -> {}));
         dialogs.put("d08-UrlInput", new UrlInputDialog(null, s -> {}));
         dialogs.put("d09-Query", new QueryDialog(null, r -> {}));
-        dialogs.put("d10-Split", new SplitDialog(null, 0, java.util.Collections.emptyList(), s -> {}));
         dialogs.put("d11-GifMake", new myGifMakeDialog(null, "", 0, new boolean[8], new short[4]));
+
+        // 阶段 E 新移植的两个对话框 —— 原版 sel_Set()（import_dialog3.xml）
+        // 与 sel_Set2()（export_dialog3.xml）的载体
+        BoxManPC pc = new BoxManPC();
+        try {
+            File importDir = new File(myMaps.sRoot + "/导入/");
+            importDir.mkdirs();
+            writeText(new File(importDir, "快照样例.xsb"), "#####\n#@$.#\n#####\nTitle: 样例\n");
+            if (myMaps.mSets3.isEmpty()) {
+                mySQLite.m_SQL.add_T(3, "快照样例集", "", "");
+                myMaps.mSets3 = mySQLite.m_SQL.get_GroupList(3);
+            }
+            my.boxman.compat.HoloAlertDialog imp = pc.buildImportDialog();
+            if (imp != null) dialogs.put("d12-Import", imp);
+            my.boxman.compat.HoloAlertDialog exp = pc.buildExportDialog();
+            if (exp != null) dialogs.put("d13-Export", exp);
+        } finally {
+            pc.dispose();
+        }
 
         File outDir = new File(System.getProperty("user.dir"), "build/ui-snapshot");
         outDir.mkdirs();
@@ -105,8 +122,15 @@ public class DialogSnapshotTool {
                 + " " + sheet.getWidth() + "x" + sheet.getHeight());
     }
 
-    private static BufferedImage render(JDialog d) {
-        if (d instanceof my.boxman.compat.HoloAlertDialog) {
+    /** 往「导入/」目录丢一个样例文档，好让导入对话框有内容可列。 */
+    private static void writeText(File f, String body) throws Exception {
+        try (java.io.Writer w = new java.io.OutputStreamWriter(
+                new java.io.FileOutputStream(f), java.nio.charset.StandardCharsets.UTF_8)) {
+            w.write(body);
+        }
+    }
+
+    private static BufferedImage render(JDialog d) {        if (d instanceof my.boxman.compat.HoloAlertDialog) {
             ((my.boxman.compat.HoloAlertDialog) d).applyHoloSize();
         }
         d.addNotify();

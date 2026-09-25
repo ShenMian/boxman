@@ -17,6 +17,9 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
 import java.util.ArrayList;
+import my.boxman.compat.HoloAlertDialog;
+import my.boxman.compat.HoloContent;
+import my.boxman.compat.HoloMessageDialog;
 import my.boxman.compat.UiWindow;
 
 /**
@@ -88,6 +91,18 @@ public class BoxManPC extends JFrame {
     private final Icon indicatorExpanded = myActionBar.createIndicator(true, INDICATOR_FG, INDICATOR_WIDTH, INDICATOR_HEIGHT);
     private final Icon indicatorCollapsed = myActionBar.createIndicator(false, INDICATOR_FG, INDICATOR_WIDTH, INDICATOR_HEIGHT);
 
+    /** 原版 {@code BoxMan.mDialog}：批量导入的进度对话框（{@code mySplitLevelsFragment}）。 */
+    private mySplitLevelsFragment mDialog;
+    /** 原版 {@code BoxMan.mDialog3}：批量导出的进度对话框（{@code myExportFragment}）。 */
+    private myExportFragment mDialog3;
+    /** 原版 {@code BoxMan.andOpen}：导入后是否允许打开关卡（只有长按关卡集的导入会置 true）。 */
+    private boolean andOpen = false;
+
+    /** {@code import_dialog3.xml} / {@code export_dialog3.xml} 里 ListView 的高度。 */
+    private static final int SET_LIST_HEIGHT = 190;
+    /** {@code export_dialog3.xml} 里「覆盖同名文档」前的 80dp 占位。 */
+    private static final int EXPORT_LEADING_GAP = 80;
+
     public static void main(String[] args) {
         try {
             FlatLightLaf.setup();
@@ -133,6 +148,11 @@ public class BoxManPC extends JFrame {
         myMaps.m_nWinHeight = PHONE_CONTENT_HEIGHT;
 
         new File(myMaps.sRoot).mkdirs();
+        // 原版 BoxMan.java:192-203 在启动时把 7 个工作目录一次建好
+        // （超长答案/、导入/、导出/、创编关卡/、关卡图/、宏/；背景/ 由皮肤复制流程负责）
+        for (String dir : new String[]{"超长答案", "导入", "导出", "创编关卡", "关卡图", "宏"}) {
+            new File(myMaps.sRoot + myMaps.sPath + dir + "/").mkdirs();
+        }
 
         mySQLite.m_SQL = mySQLite.getInstance();
         mySQLite.m_SQL.openDataBase();
@@ -381,8 +401,9 @@ public class BoxManPC extends JFrame {
     // ------------------------------------------------------------ 溢出菜单（原版 res/menu/main.xml）
 
     private void buildOverflowMenu() {
-        actionBar.addAction("导入...", this::chooseImportFile);
-        actionBar.addAction("导出...", this::showExportDialog);
+        // 原版 res/menu/main.xml：menu_set → sel_Set()、menu_exp_ans → sel_Set2()
+        actionBar.addAction("导入...", this::sel_Set);
+        actionBar.addAction("导出...", this::sel_Set2);
         actionBar.addAction("最近推过的关卡", this::openRecentLevels);
         actionBar.addAction("关卡查询", this::showQueryDialog);
         actionBar.addAction("新建关卡集...", this::createNewSet);
@@ -391,10 +412,6 @@ public class BoxManPC extends JFrame {
         actionBar.addAction("比赛答案提交列表", () -> new mySubmitList().setVisible(true));
         actionBar.addAction("帮助", () -> new Help(0).setVisible(true));
         actionBar.addAction("关于", this::showAboutDialog);
-    }
-
-    private void showExportDialog() {
-        new ExportDialog(this, message -> JOptionPane.showMessageDialog(this, message, "导出完成", JOptionPane.INFORMATION_MESSAGE)).setVisible(true);
     }
 
     /**
@@ -515,16 +532,289 @@ public class BoxManPC extends JFrame {
         new myPicListView().setVisible(true);
     }
 
-    // ------------------------------------------------------------ 导入
+    // ------------------------------------------------------------ 导入 / 导出（原版 sel_Set / sel_Set2）
 
-    private void chooseImportFile() {
-        JFileChooser chooser = new JFileChooser();
-        chooser.setDialogTitle("选择关卡文件");
-        chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("关卡文件 (*.txt;*.sok;*.xsb)", "txt", "sok", "xsb"));
-        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            File sel = chooser.getSelectedFile();
-            importLevelFile(sel);
+    /**
+     * 原版 {@code BoxMan.sel_Set()}：列出「导入/」目录下的关卡集文档，多选后批量导入。
+     *
+     * <p>布局对应 {@code res/layout/import_dialog3.xml}：
+     * 6dp 色条 → {@code #334455} 分组条（{@code 关卡集：} + 右对齐「全选」）→ 190dp 多选列表
+     * → 8dp {@code #445566} 色条 → {@code 选项：} + XSB/Lurd → 6dp 色条
+     * → 编码单选（自动/GBK/UTF-8，{@code paddingLeft 12dp}）→ 12dp 色条。
+     *
+     * <p>原版代码里 {@code m_All.setChecked(false)} 覆盖了 XML 的 {@code checked="true"}，
+     * 而 {@code m_XSB.setChecked(true)} 覆盖了 XML 的 {@code checked="false"} ——
+     * 所以有效初值是「全选 = 否、XSB = 是、Lurd = 否、自动 = 是」。
+     */
+    void sel_Set() {
+        HoloAlertDialog dlg = buildImportDialog();
+        if (dlg != null) {
+            dlg.setVisible(true);
         }
+    }
+
+    /**
+     * 只把「导入」对话框搭好、不显示 —— 与原版 {@code sel_Set()} 的差异仅在最后那一次
+     * {@code create().show()}。拆出来是为了让测试能直接检查组件树与初值。
+     *
+     * @return 搭好的对话框；若「导入/」下没有可导入的文档则返回 {@code null}（原版此时只弹 Toast）
+     */
+    HoloAlertDialog buildImportDialog() {
+        myMaps.newSetList();
+
+        if (myMaps.mFile_List.size() <= 0) {
+            MyToast.showToast(this, "没找到关卡集文档。", MyToast.LENGTH_SHORT);
+            return null;
+        }
+
+        // 原版 m_setName = findViewById(R.id.im_sets)，CHOICE_MODE_MULTIPLE + 全部 setItemChecked(false)
+        JList<String> sets = createSetList(myMaps.mFile_List.toArray(new String[0]));
+        sets.clearSelection();
+        myMaps.m_setName = sets;
+
+        final JCheckBox cbAll = HoloContent.check32("全选", false, 80);
+        cbAll.addActionListener(e -> {
+            if (cbAll.isSelected()) sets.setSelectionInterval(0, sets.getModel().getSize() - 1);
+            else sets.clearSelection();
+        });
+
+        final JCheckBox cbXsb = HoloContent.wrapCheck("XSB", myMaps.isXSB);
+        final JCheckBox cbLurd = HoloContent.wrapCheck("Lurd", myMaps.isLurd);
+        cbXsb.addActionListener(e -> {
+            myMaps.isXSB = cbXsb.isSelected();
+            if (!cbXsb.isSelected() && !cbLurd.isSelected()) cbLurd.setSelected(true);
+        });
+        cbLurd.addActionListener(e -> {
+            myMaps.isLurd = cbLurd.isSelected();
+            if (!cbLurd.isSelected() && !cbXsb.isSelected()) cbXsb.setSelected(true);
+        });
+
+        myMaps.m_Code = 0;   // 原版：myMaps.m_Code = 0;
+        ButtonGroup codeGroup = new ButtonGroup();
+        JRadioButton rbAuto = HoloContent.radio("自动", true);
+        JRadioButton rbGbk = HoloContent.radio("GBK", false);
+        JRadioButton rbUtf8 = HoloContent.radio("UTF-8", false);
+        codeGroup.add(rbAuto);
+        codeGroup.add(rbGbk);
+        codeGroup.add(rbUtf8);
+        rbAuto.addActionListener(e -> myMaps.m_Code = 0);
+        rbGbk.addActionListener(e -> myMaps.m_Code = 1);
+        rbUtf8.addActionListener(e -> myMaps.m_Code = 2);
+
+        JPanel optionRow = HoloContent.row(HoloContent.BAND, 0,
+                HoloContent.label("选项："), Box.createHorizontalStrut(16), cbXsb,
+                Box.createHorizontalStrut(10), cbLurd);
+
+        JPanel codeRow = new JPanel();
+        codeRow.setLayout(new BoxLayout(codeRow, BoxLayout.X_AXIS));
+        codeRow.setBackground(HoloContent.BAND);
+        codeRow.setOpaque(true);
+        codeRow.setBorder(new EmptyBorder(0, 12, 0, 0));   // paddingLeft 12dp
+        codeRow.add(Box.createHorizontalStrut(20));
+        codeRow.add(rbAuto);
+        codeRow.add(Box.createHorizontalStrut(16));
+        codeRow.add(rbGbk);
+        codeRow.add(Box.createHorizontalStrut(16));
+        codeRow.add(rbUtf8);
+
+        JComponent content = HoloContent.column(
+                HoloContent.band(HoloContent.BAND, 6),
+                HoloContent.headRow("关卡集：", 100, cbAll),
+                wrapSetList(sets),
+                HoloContent.band(new Color(0x44, 0x55, 0x66), 8),
+                optionRow,
+                HoloContent.band(HoloContent.BAND, 6),
+                codeRow,
+                HoloContent.band(HoloContent.BAND, 12));
+
+        andOpen = false;   // 原版：andOpen = false;
+
+        HoloAlertDialog dlg = HoloAlertDialog.create(this, "导入");
+        dlg.setContentView(content);
+        dlg.addButton("取消", null);
+        dlg.addButton("确定", () -> {
+            dlg.dispose();
+            imPort_Sets(myMaps.mFile_List, mySplitLevelsFragment.TYPE_FILE_LIST);   // 导入关卡集
+            refreshTree();                                                          // expAdapter.notifyDataSetChanged()
+        });
+        return dlg;
+    }
+
+    /**
+     * 原版 {@code BoxMan.sel_Set2()}：列出全部关卡集，多选后批量导出到「导出/」目录。
+     *
+     * <p>布局对应 {@code res/layout/export_dialog3.xml}：
+     * 6dp 色条 → {@code #334455} 分组条（{@code 关卡集：} + 右对齐「仅答案关卡」「全选」）
+     * → 190dp 多选列表 → 8dp {@code #445566} 色条 → {@code 选项：} + 含答案/答案含备注
+     * → 6dp 色条 → 80dp 占位 + 覆盖同名文档 → 6dp 色条。
+     *
+     * <p>⚠️ 原版有个自带的怪癖，这里照抄不改：{@code ex_ans}「仅答案关卡」的初值来自 XML
+     * （{@code checked="true"}），而它的 {@code OnCheckedChangeListener} 才会把状态写进
+     * {@code myMaps.isXSB}。若上一次导入把 XSB 取消勾选过，{@code myMaps.isXSB} 就是 false，
+     * 此时打开导出对话框、不再动这个框，「仅答案关卡」虽然显示勾选却不会被导出。
+     */
+    void sel_Set2() {
+        HoloAlertDialog dlg = buildExportDialog();
+        if (dlg != null) {
+            dlg.setVisible(true);
+        }
+    }
+
+    /**
+     * 只把「导出」对话框搭好、不显示 —— 与 {@link #buildImportDialog()} 同一套路，
+     * 供测试检查初值与组件树。
+     *
+     * @return 搭好的对话框；若库里一个关卡集都没有则返回 {@code null}
+     */
+    HoloAlertDialog buildExportDialog() {
+        myMaps.isLurd = false;   // 原版：myMaps.isLurd = false;
+
+        ArrayList<Long> ids = new ArrayList<Long>();
+        java.util.List<String> titles = myMaps.getData(ids);
+        if (titles.isEmpty()) {
+            MyToast.showToast(this, "没找到关卡集。", MyToast.LENGTH_SHORT);
+            return null;
+        }
+
+        // 原版 m_setName = findViewById(R.id.ex_sets)，全部 setItemChecked(k, true)
+        JList<String> sets = createSetList(titles.toArray(new String[0]));
+        sets.setSelectionInterval(0, titles.size() - 1);
+        myMaps.m_setName = sets;
+
+        final JCheckBox cbAll = HoloContent.check32("全选", true, 80);
+        cbAll.addActionListener(e -> {
+            if (cbAll.isSelected()) sets.setSelectionInterval(0, sets.getModel().getSize() - 1);
+            else sets.clearSelection();
+        });
+
+        final JCheckBox cbAns = HoloContent.wrapCheck("仅答案关卡", true);
+        cbAns.addActionListener(e -> myMaps.isXSB = cbAns.isSelected());
+
+        final JCheckBox cbComment = HoloContent.wrapCheck("答案含备注", false);
+        final JCheckBox cbLurd = HoloContent.wrapCheck("含答案", false);
+        cbLurd.addActionListener(e -> {
+            myMaps.isLurd = cbLurd.isSelected();
+            cbComment.setSelected(cbLurd.isSelected());
+        });
+        cbComment.addActionListener(e -> {
+            if (cbComment.isSelected()) cbLurd.setSelected(true);
+            myMaps.isComment = cbComment.isSelected();   // 是否导出答案的备注信息
+        });
+
+        final JCheckBox cbReWrite = HoloContent.wrapCheck("覆盖同名文档", true);   // 原版 m_ReWrite.setChecked(true)
+
+        JPanel optionRow = HoloContent.row(HoloContent.BAND, 0,
+                HoloContent.label("选项："), Box.createHorizontalStrut(10), cbLurd,
+                Box.createHorizontalStrut(16), cbComment);
+
+        JPanel rewriteRow = HoloContent.row(HoloContent.BAND, 0,
+                Box.createHorizontalStrut(EXPORT_LEADING_GAP), cbReWrite);
+
+        JComponent content = HoloContent.column(
+                HoloContent.band(HoloContent.BAND, 6),
+                HoloContent.headRow("关卡集：", 100, cbAns, cbAll),
+                wrapSetList(sets),
+                HoloContent.band(new Color(0x44, 0x55, 0x66), 8),
+                optionRow,
+                HoloContent.band(HoloContent.BAND, 6),
+                rewriteRow,
+                HoloContent.band(HoloContent.BAND, 6));
+
+        HoloAlertDialog dlg = HoloAlertDialog.create(this, "导出");
+        dlg.setContentView(content);
+        dlg.addButton("取消", null);
+        dlg.addButton("确定", () -> {
+            // 原版：被勾选的关卡集取正 id，未勾选的取负 id，交给 exPort_Sets 按符号过滤
+            long[] setsArr = new long[ids.size()];
+            for (int k = 0; k < setsArr.length; k++) {
+                setsArr[k] = sets.isSelectedIndex(k) ? ids.get(k) : -ids.get(k);
+            }
+            dlg.dispose();
+            exPort_Sets(setsArr, myMaps.isXSB, myMaps.isLurd, cbReWrite.isSelected());
+        });
+        return dlg;
+    }
+
+    /** 原版 {@code imPort_Sets(ArrayList&lt;String&gt;, int)}：异步导入。 */
+    void imPort_Sets(ArrayList<String> filelist, int act) {
+        if (mDialog == null) {
+            mDialog = new mySplitLevelsFragment(this, this::onSplitDone, act, filelist);
+            mDialog.show();
+            mDialog = null;
+        }
+    }
+
+    /** 原版 {@code exPort_Sets(long[], boolean, boolean, boolean)}：异步导出。 */
+    void exPort_Sets(long[] sets, boolean andAns, boolean isLurd, boolean isReWrite) {
+        if (mDialog3 == null) {
+            mDialog3 = new myExportFragment(this, this::onExportDone, andAns, isLurd, isReWrite, sets);
+            mDialog3.show();
+            mDialog3 = null;
+        }
+    }
+
+    /** 原版 {@code BoxMan.onSplitDone(String)}：导入结束后的刷新与统计提示。 */
+    public void onSplitDone(String inf) {
+        refreshTree();
+        updateActionBarTitle();
+
+        // 导入统计提示
+        if (andOpen && myMaps.m_Sets[31] == 1 && myMaps.m_Nums[2] == 1) {
+            // 导入后打开（长按关卡集的导入，仅导入了一个有效的关卡时）
+            mySQLite.m_SQL.get_Set(myMaps.m_Set_id);
+            mySQLite.m_SQL.get_Last_Level(myMaps.m_Set_id);   // 取得刚刚添加的关卡到"关卡列表"
+
+            if (0 == myMaps.m_Nums[3]) {   // 关卡有效时
+                if (0 < myMaps.m_Nums[1]) {
+                    MyToast.showToast(this, "重复或无效的答案未导入！", MyToast.LENGTH_SHORT);
+                }
+                myMaps.iskinChange = false;
+                myMaps.sFile = "关卡导入";
+                myMaps.curMap = myMaps.m_lstMaps.get(0);
+                new myGameView().setVisible(true);
+            } else {
+                new HoloMessageDialog(this, "信息", inf, "确定").setVisible(true);
+            }
+            andOpen = false;
+        } else {   // 常规的导入（一般为导入关卡集）
+            if (1 == myMaps.m_Nums[2] && 0 == myMaps.m_Nums[3]
+                    && (0 == myMaps.m_Nums[0] || 0 < myMaps.m_Nums[0] && 0 == myMaps.m_Nums[1])) {
+                // 成功导入一个有效关卡且答案也没有差错时，简单提示即可
+                MyToast.showToast(this, "导入成功！", MyToast.LENGTH_SHORT);
+            } else {
+                new HoloMessageDialog(this, "信息：", inf, "确定").setVisible(true);
+            }
+        }
+    }
+
+    /** 原版 {@code BoxMan.onExportDone(String)}。 */
+    public void onExportDone(String inf) {
+        new HoloMessageDialog(this, "已存入“导出/”文件夹", inf, "确定").setVisible(true);
+    }
+
+    /**
+     * 原版 {@code ListView}（{@code CHOICE_MODE_MULTIPLE}）的等价物：
+     * {@link HoloContent#itemList} 给的是原版「选中 {@code #0088aa} / 未选中 {@code #363636}」
+     * 的观感，这里再加上 {@code android:padding="4dp"} 与多选模式。
+     */
+    private static JList<String> createSetList(String[] items) {
+        JList<String> list = HoloContent.itemList(items);
+        list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        list.setBackground(HoloContent.BAND);
+        list.setBorder(new EmptyBorder(HoloContent.FIELD_PAD, HoloContent.FIELD_PAD,
+                HoloContent.FIELD_PAD, HoloContent.FIELD_PAD));
+        return list;
+    }
+
+    /** 给关卡集列表套上固定 190dp 高的滚动面板（原版 {@code android:layout_height="190dp"}）。 */
+    private static JScrollPane wrapSetList(JList<String> list) {
+        JScrollPane sp = HoloContent.scroll(list);
+        HoloContent.darkScrollBar(sp);
+        Dimension d = new Dimension(0, SET_LIST_HEIGHT);
+        sp.setPreferredSize(d);
+        sp.setMinimumSize(d);
+        sp.setMaximumSize(new Dimension(Integer.MAX_VALUE, SET_LIST_HEIGHT));
+        return sp;
     }
 
     public int importLevelFile(File file) {
