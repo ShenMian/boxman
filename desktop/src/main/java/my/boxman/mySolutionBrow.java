@@ -6,6 +6,7 @@ import java.awt.datatransfer.StringSelection;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import my.boxman.compat.UiWindow;
+import my.boxman.compat.HoloPopupMenu;
 
 /**
  * Similar Level Solution Browser for BoxMan PC (Swing Port).
@@ -42,10 +43,11 @@ public class mySolutionBrow extends JDialog {
             }
         });
 
-        JPopupMenu popup = new JPopupMenu();
-        JMenuItem miCopy = new JMenuItem("复制答案 (LURD)");
-        miCopy.addActionListener(e -> copySelectedSolution());
-        popup.add(miCopy);
+        // 原版 mySolutionBrow.onCreateContextMenu() 只有一项（其余 3、4 两项被 <!-- --> 注释掉）：
+        //     menu.add(0, 5, 0, "导出到剪切板: Lurd");
+        // Android 上下文菜单与 ActionBar 溢出菜单共用 popup_menu_holo_dark 样式 → HoloPopupMenu。
+        JPopupMenu popup = HoloPopupMenu.create();
+        HoloPopupMenu.addItem(popup, "导出到剪切板: Lurd", this::copySelectedSolution);
         listSolutions.setComponentPopupMenu(popup);
 
         add(new JScrollPane(listSolutions), BorderLayout.CENTER);

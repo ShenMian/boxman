@@ -66,27 +66,27 @@ public class Phase5DialogTest {
         assertEquals("Mask should be 1 + 4 + 16 = 21", 21, result[1]);
     }
 
+    /**
+     * 「关卡尺寸」框（原版 {@code new_level_dialog.xml}）：只有「列 × 行」两个数字框，
+     * 默认 10 列 × 15 行。越界（&lt;3 或 &gt;100）退回默认值而不是拒绝。
+     */
     @Test
     public void testNewLevelDialog() {
-        final Object[] levelData = new Object[4];
-        NewLevelDialog dlg = new NewLevelDialog(null, (title, author, rows, cols) -> {
-            levelData[0] = title;
-            levelData[1] = author;
-            levelData[2] = rows;
-            levelData[3] = cols;
+        final int[] got = new int[2];
+        NewLevelDialog dlg = new NewLevelDialog(null, (rows, cols) -> {
+            got[0] = rows;
+            got[1] = cols;
         });
 
         assertNotNull("NewLevelDialog should be created", dlg);
-        dlg.tfTitle.setText("测试关卡");
-        dlg.tfAuthor.setText("测试作者");
+        assertEquals("默认列数应为 10", 10, dlg.spCols.getValue());
+        assertEquals("默认行数应为 15", 15, dlg.spRows.getValue());
+
         dlg.spRows.setValue(20);
         dlg.spCols.setValue(18);
-
         dlg.btOK.doClick();
-        assertEquals("Title should match", "测试关卡", levelData[0]);
-        assertEquals("Author should match", "测试作者", levelData[1]);
-        assertEquals("Rows should match", 20, levelData[2]);
-        assertEquals("Cols should match", 18, levelData[3]);
+        assertEquals("Rows should match", 20, got[0]);
+        assertEquals("Cols should match", 18, got[1]);
     }
 
     @Test

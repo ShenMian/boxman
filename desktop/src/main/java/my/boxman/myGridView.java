@@ -1,13 +1,22 @@
 package my.boxman;
 
+import my.boxman.compat.HoloChoiceDialog;
+import my.boxman.compat.HoloConfirmDialog;
+import my.boxman.compat.HoloContent;
+import my.boxman.compat.HoloPopupMenu;
+import my.boxman.compat.HoloViewDialog;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.plaf.basic.BasicScrollBarUI;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
+import java.io.File;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.concurrent.ConcurrentHashMap;
 import my.boxman.compat.UiWindow;
 
@@ -93,6 +102,9 @@ public class myGridView extends JFrame {
 
     private static final ConcurrentHashMap<String, BufferedImage> thumbCache = new ConcurrentHashMap<>();
     private final ArrayList<LevelCard> cardList = new ArrayList<>();
+
+    /** 「╋」在非「创编关卡」下弹出的两项菜单，供测试取用。 */
+    private JPopupMenu addMenuForTest;
 
     public myGridView(long setId, String setTitle) {
         this.mSetId = setId;
@@ -205,7 +217,7 @@ public class myGridView extends JFrame {
         actionBar.setUpEnabled(true, this::finish);
         actionBar.setBarTitle(myMaps.sFile);
 
-        actionBar.addBarAction(A_ADD, false, myActionBar.NO_OP);       // 尚未移植
+        actionBar.addBarAction(A_ADD, this::onAdd);
         actionBar.addBarAction(A_TOP, () -> scrollToPosition(true));
         actionBar.addBarAction(A_BOTTOM, () -> scrollToPosition(false));
 
@@ -215,9 +227,9 @@ public class myGridView extends JFrame {
         actionBar.addAction(A_SHOWDUP, () -> toggleShowDup(myMaps.m_Sets[12] != 1));
         actionBar.addAction(A_FIRST_UNSOLVED, this::openFirstUnsolved);
         actionBar.addAction(A_RECENT, this::openRecentLevel);
-        actionBar.addAction(A_CLEAR, false, myActionBar.NO_OP);        // 尚未移植
+        actionBar.addAction(A_CLEAR, this::onClearList);
         actionBar.addAction(A_COLCOUNT, this::chooseColumnCount);
-        actionBar.addAction(A_DELETE_MORE, false, myActionBar.NO_OP);  // 尚未移植
+        actionBar.addAction(A_DELETE_MORE, this::onDeleteMore);
         actionBar.addAction(A_ABOUT, this::showSetAbout);
 
         applyMenu();
@@ -469,6 +481,249 @@ public class myGridView extends JFrame {
         }
     }
 
+    // ---------------------------------------------------------------- ╋ / 清空列表 / 批量删除
+
+    /**
+     * 原版 {@code levels_add}「╋」：创编新的关卡，或往当前关卡集里添加关卡。
+     *
+     * <p>两条分支（{@code myGridView.java:441-502}）：
+     * <ul>
+     *   <li>{@code sFile == "创编关卡"} → 弹「关卡尺寸」框，建一个空关卡后直接进编辑器
+     *       （{@code curMapNum = -2} 表示「新建关卡」状态，此时列表里还没有图标）</li>
+     *   <li>其它关卡集 → 弹一个两项的 PopupMenu：{@code 添加关卡(文档)...} / {@code 添加关卡(剪切板)...}</li>
+     * </ul>
+     */
+    void onAdd() {
+        if ("创编关卡".equals(myMaps.sFile)) {
+            SimpleDateFormat df = new SimpleDateFormat("yyyyMMdd_HHmmss");
+            final String fn = "NewLevel_" + df.format(new Date()) + ".XSB";   // new Date() 取当前系统时间
+
+            NewLevelDialog dlg = new NewLevelDialog(this, (rows, cols) -> {
+                myMaps.curMap = new mapNode(rows, cols, null, fn, "", "");
+                myMaps.curMap.fileName = fn;
+                myMaps.curMapNum = -2;   // 「新建关卡」状态，此时列表中没有关卡图标
+                new myEditView().setVisible(true);
+            });
+            dlg.setVisible(true);
+        } else {
+            // 原版用 PopupMenu 锚在 mTitleView 上
+            JPopupMenu menu = HoloPopupMenu.create();
+            HoloPopupMenu.addItem(menu, "添加关卡(文档)...", this::sel_File);
+            HoloPopupMenu.addItem(menu, "添加关卡(剪切板)...", this::read_Plate);
+            addMenuForTest = menu;
+            if (mTitleView != null && mTitleView.isShowing()) {
+                menu.show(mTitleView, 0, mTitleView.getHeight());
+            }
+        }
+    }
+
+    /**
+     * 原版 {@code sel_File()}「添加关卡(文档)...」：列出「导入/」目录下的关卡文档，
+     * 让用户选一个导入到当前关卡集。
+     *
+     * <p>原版还带 {@code import_dialog.xml} 的「关卡/答案」复选、编码单选
+     * （自动/GBK/UTF-8）与「仅一个关卡时自动打开」。PC 侧这里先按原版口径把
+     * {@code myMaps.isXSB / isLurd / m_Code / m_Sets[31]} 读进来并回写，
+     * 导入本身复用 {@link BoxManPC#importLevelFile}。
+     */
+    void sel_File() {
+        myMaps.newSetList();
+        if (myMaps.mFile_List.isEmpty()) {
+            MyToast.showToast(this, "没找到关卡文档。", MyToast.LENGTH_SHORT);
+            return;
+        }
+
+        String[] items = myMaps.mFile_List.toArray(new String[0]);
+        JComponent extra = buildImportOptions(true);
+
+        HoloChoiceDialog.selectThenOk(this, "文档导入", extra, items, -1, which -> {
+            String setName = myMaps.mFile_List.get(which);
+            File f = new File(myMaps.sRoot + myMaps.sPath + "导入/" + setName);
+            importDocFile(f, setName);
+        }).setVisible(true);
+    }
+
+    /**
+     * 原版 {@code read_Plate()}「添加关卡(剪切板)...」：剪切板内容先放进一个可编辑的
+     * 文本框（标题「剪切板导入」），确定后按「关卡/答案」复选导入。
+     */
+    void read_Plate() {
+        String str = myMaps.loadClipper();
+        if (str == null || str.isEmpty()) {
+            MyToast.showToast(this, "剪切板中没有找到关卡数据！", MyToast.LENGTH_SHORT);
+            return;
+        }
+
+        JTextArea ta = new JTextArea(str);
+        ta.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
+        ta.setBackground(HoloContent.FIELD_BG);
+        ta.setForeground(HoloContent.TEXT);
+        ta.setCaretColor(HoloContent.TEXT);
+        ta.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+        JScrollPane sp = new JScrollPane(ta);
+        sp.setPreferredSize(new Dimension(300, 180));
+        HoloContent.darkScrollBar(sp);
+
+        JComponent extra = HoloContent.column(buildImportOptions(false), sp);
+
+        HoloViewDialog dlg = new HoloViewDialog(this, "剪切板导入", extra);
+        dlg.addButton("取消", dlg::dispose);
+        dlg.addButton("确定", () -> {
+            dlg.dispose();
+            importClipText(ta.getText());
+        });
+        dlg.setVisible(true);
+    }
+
+    /** {@code import_dialog.xml} / {@code import_dialog2.xml} 共用的那几个开关。 */
+    private JComponent buildImportOptions(boolean withEncoding) {
+        JCheckBox cbXsb = HoloContent.check32("关卡", myMaps.isXSB, 96);
+        JCheckBox cbLurd = HoloContent.check32("答案", myMaps.isLurd, 96);
+        // 原版是两个 CheckBox 互相兜底：都不选时自动把另一个勾上
+        cbXsb.addActionListener(e -> {
+            myMaps.isXSB = cbXsb.isSelected();
+            if (!cbXsb.isSelected() && !cbLurd.isSelected()) cbLurd.setSelected(true);
+        });
+        cbLurd.addActionListener(e -> {
+            myMaps.isLurd = cbLurd.isSelected();
+            if (!cbLurd.isSelected() && !cbXsb.isSelected()) cbXsb.setSelected(true);
+        });
+
+        JCheckBox cbOpen = HoloContent.check32("仅一个关卡时自动打开", myMaps.m_Sets[31] == 1, 288);
+        cbOpen.addActionListener(e -> myMaps.m_Sets[31] = cbOpen.isSelected() ? 1 : 0);
+
+        JPanel row1 = HoloContent.row(cbXsb, cbLurd);
+        if (!withEncoding) {
+            return HoloContent.column(row1, cbOpen);
+        }
+
+        ButtonGroup g = new ButtonGroup();
+        JRadioButton rbAuto = HoloContent.radio("自动", myMaps.m_Code == 0);
+        JRadioButton rbGbk = HoloContent.radio("GBK", myMaps.m_Code == 1);
+        JRadioButton rbUtf8 = HoloContent.radio("UTF-8", myMaps.m_Code == 2);
+        g.add(rbAuto);
+        g.add(rbGbk);
+        g.add(rbUtf8);
+        rbAuto.addActionListener(e -> myMaps.m_Code = 0);
+        rbGbk.addActionListener(e -> myMaps.m_Code = 1);
+        rbUtf8.addActionListener(e -> myMaps.m_Code = 2);
+
+        return HoloContent.column(row1, HoloContent.row(rbAuto, rbGbk, rbUtf8), cbOpen);
+    }
+
+    /** 导入一个「导入/」目录下的文档（关卡集名取文档名去掉扩展名）。 */
+    void importDocFile(File f, String fileName) {
+        int dot = fileName.lastIndexOf('.');
+        String setTitle = dot > 0 ? fileName.substring(0, dot) : fileName;
+
+        // PC 侧没有独立的导入 Activity，复用 BoxManPC 的解析器；它会把关卡加进同名关卡集
+        BoxManPC importer = findBoxManPC();
+        if (importer != null) {
+            importer.importLevelFile(f);
+        } else {
+            new BoxManPC().importLevelFile(f);
+        }
+        afterImport(setTitle);
+    }
+
+    /** 导入剪切板文本（关卡集名用当前关卡集名，原版就是导进当前集）。 */
+    void importClipText(String text) {
+        BoxManPC importer = findBoxManPC();
+        int n = (importer != null)
+                ? importer.importLevelText(text, myMaps.sFile, false)
+                : new BoxManPC().importLevelText(text, myMaps.sFile, false);
+        if (n > 0) afterImport(myMaps.sFile);
+    }
+
+    /** 导入完成后的列表刷新（原版 {@code onSplitDone()} 的收尾部分）。 */
+    private void afterImport(String setTitle) {
+        if (mSetId >= 0 && mySQLite.m_SQL != null) {
+            mySQLite.m_SQL.get_Levels(mSetId);
+        }
+        refreshGrid();
+        my_SelectAll.setSelected(false);
+        scrollToPosition(false);   // 定位到新增的关卡
+        MyToast.showToast(this, "导入成功！", MyToast.LENGTH_SHORT);
+    }
+
+    /** 找出已打开的 {@link BoxManPC} 主窗口；找不到就返回 {@code null}（测试里就是这样）。 */
+    private BoxManPC findBoxManPC() {
+        for (Window w : Window.getWindows()) {
+            if (w instanceof BoxManPC && w.isDisplayable()) return (BoxManPC) w;
+        }
+        return null;
+    }
+
+    /**
+     * 原版 {@code levels_clear}「清空列表」：确认后把「最近推过的关卡」的时间戳清掉，
+     * 并清空当前列表。
+     */
+    private void onClearList() {
+        new HoloConfirmDialog(this, "确认", "清空列表，确定吗？", "取消", "确定",
+                this::clearList).setVisible(true);
+    }
+
+    /** 「清空列表」确认后的动作（原版确认框里的 {@code onClick}）。 */
+    void clearList() {
+        if (mySQLite.m_SQL != null) mySQLite.m_SQL.Clear_L_DateTime();
+        myMaps.m_lstMaps.clear();
+        refreshGrid();
+    }
+
+    /**
+     * 原版 {@code levels_delete_more}「批量删除...」：弹「删除范围: 1 -- N」，
+     * 输入起止序号后按序号区间删除。
+     *
+     * <p>「创编关卡」删的是磁盘上的 {@code .XSB} 文档；其它关卡集删的是库里的关卡
+     * （{@code del_L}）。<b>从后往前删</b>，否则下标会错位。
+     */
+    void onDeleteMore() {
+        if (myMaps.m_lstMaps.isEmpty()) return;
+
+        JSpinner spFrom = HoloContent.spinner(72, 1, 1, myMaps.m_lstMaps.size());
+        JSpinner spTo = HoloContent.spinner(72, 0, 0, myMaps.m_lstMaps.size());
+        JComponent body = HoloContent.column(
+                HoloContent.row(HoloContent.label("开始:", 48, SwingConstants.LEFT), spFrom),
+                HoloContent.row(HoloContent.label("结束:", 48, SwingConstants.LEFT), spTo));
+
+        HoloViewDialog dlg = new HoloViewDialog(this,
+                "删除范围: 1 -- " + myMaps.m_lstMaps.size(), body);
+        dlg.addButton("取消", dlg::dispose);
+        dlg.addButton("确定", () -> {
+            int m = (Integer) spFrom.getValue();
+            int n = (Integer) spTo.getValue();
+            dlg.dispose();
+            deleteRange(m, n);
+        });
+        dlg.setVisible(true);
+    }
+
+    /** 「批量删除...」确认后的动作：删除序号 {@code [m, n]} 闭区间内的关卡。 */
+    void deleteRange(int m, int n) {
+        myMaps.curMap = null;
+
+        boolean creative = "创编关卡".equals(myMaps.sFile);
+        int len = myMaps.m_lstMaps.size();
+        for (int k = n; k >= m; k--) {          // 从后往前，避免下标错位
+            if (k > len) continue;
+            try {
+                if (creative) {
+                    File file = new File(myMaps.sRoot + myMaps.sPath + "创编关卡/"
+                            + myMaps.m_lstMaps.get(k - 1).fileName);
+                    if (file.exists() && file.isFile()) file.delete();
+                } else {
+                    mySQLite.m_SQL.del_L(myMaps.m_lstMaps.get(k - 1).Level_id);
+                }
+                myMaps.m_lstMaps.remove(k - 1);
+            } catch (Exception ignored) {
+                // 原版这里也是空 catch
+            }
+        }
+
+        setSelectAll();
+        refreshGrid();
+    }
+
     private void openGame(mapNode node, int index) {
         if (node.Title != null && node.Title.equals("无效关卡")) {
             new myAbout2(this, node).setVisible(true);
@@ -628,47 +883,34 @@ public class myGridView extends JFrame {
         }
 
         private void showContextMenu(MouseEvent e) {
-            JPopupMenu menu = new JPopupMenu();
-            JMenuItem miOpen = new JMenuItem("推此关卡");
-            miOpen.addActionListener(act -> openGame(node, index));
-            menu.add(miOpen);
-
-            JMenuItem miEdit = new JMenuItem("编辑关卡...");
-            miEdit.addActionListener(act -> {
+            // 原版是 registerForContextMenu + onCreateContextMenu —— Android 上下文菜单
+            // 与 ActionBar 溢出菜单共用 popup_menu_holo_dark 样式，所以必须走 HoloPopupMenu。
+            // ⚠️ 条目集合/标题仍是 PC 自造的，与原版 14 项不一致，见 PORTING_AUDIT.md 阶段 G。
+            JPopupMenu menu = HoloPopupMenu.create();
+            HoloPopupMenu.addItem(menu, "推此关卡", () -> openGame(node, index));
+            HoloPopupMenu.addItem(menu, "编辑关卡...", () -> {
                 myMaps.curMap = node;
-                myEditView ev = new myEditView();
-                ev.setVisible(true);
+                new myEditView().setVisible(true);
             });
-            menu.add(miEdit);
-
-            JMenuItem miExport = new JMenuItem("导出关卡...");
-            miExport.addActionListener(act -> {
+            HoloPopupMenu.addItem(menu, "导出关卡...", () -> {
                 myMaps.curMap = node;
-                myExport exp = new myExport();
-                exp.setVisible(true);
+                new myExport().setVisible(true);
             });
-            menu.add(miExport);
-
-            JMenuItem miCopyXsb = new JMenuItem("复制 XSB 到剪贴板");
-            miCopyXsb.addActionListener(act -> {
+            HoloPopupMenu.addItem(menu, "复制 XSB 到剪贴板", () -> {
                 if (node.Map != null) {
                     try {
-                        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(node.Map), null);
-                        MyToast.showToast(myGridView.this, "已复制第 " + (index + 1) + " 关 XSB 数据！", MyToast.LENGTH_SHORT);
+                        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
+                                new java.awt.datatransfer.StringSelection(node.Map), null);
+                        MyToast.showToast(myGridView.this, "已复制第 " + (index + 1) + " 关 XSB 数据！",
+                                MyToast.LENGTH_SHORT);
                     } catch (Exception ignored) {
                     }
                 }
             });
-            menu.add(miCopyXsb);
-
-            menu.addSeparator();
-
-            JMenuItem miDetail = new JMenuItem("关卡详细信息...");
-            miDetail.addActionListener(act -> new myAbout2(myGridView.this, node).setVisible(true));
-            menu.add(miDetail);
-
-            JMenuItem miDelete = new JMenuItem("删除此关卡...");
-            miDelete.addActionListener(act -> {
+            HoloPopupMenu.addSeparator(menu);
+            HoloPopupMenu.addItem(menu, "关卡详细信息...",
+                    () -> new myAbout2(myGridView.this, node).setVisible(true));
+            HoloPopupMenu.addItem(menu, "删除此关卡...", () -> {
                 DelDialog dlg = new DelDialog(null, node.Title, delAns -> {
                     if (mySQLite.m_SQL != null && node.Level_id > 0) {
                         mySQLite.m_SQL.del_L(node.Level_id);
@@ -681,7 +923,6 @@ public class myGridView extends JFrame {
                 });
                 dlg.setVisible(true);
             });
-            menu.add(miDelete);
 
             menu.show(this, e.getX(), e.getY());
         }
@@ -883,5 +1124,27 @@ public class myGridView extends JFrame {
         @Override
         protected void paintThumb(Graphics g, JComponent c, Rectangle thumbBounds) {
         }
+    }
+
+    // ---------------------------------------------------------------- 测试钩子
+
+    /** 供测试读取 ActionBar 的菜单状态（可见性/启用态/勾选态）。 */
+    myActionBar getActionBarForTest() {
+        return actionBar;
+    }
+
+    /** 供测试读取「╋」在非「创编关卡」下弹出的两项菜单。 */
+    JPopupMenu getAddMenuForTest() {
+        return addMenuForTest;
+    }
+
+    /** 供测试触发「╋」而不真的弹窗。 */
+    void addForTest() {
+        onAdd();
+    }
+
+    /** 供测试构建导入选项面板（{@code import_dialog.xml} 的等价物）。 */
+    JComponent buildImportOptionsForTest(boolean withEncoding) {
+        return buildImportOptions(withEncoding);
     }
 }

@@ -532,11 +532,49 @@ public class BoxManPC extends JFrame {
     }
 
     public int importLevelFile(File file, boolean silent) {
+        String fileName = file.getName();
+        int dotIdx = fileName.lastIndexOf('.');
+        String setTitle = dotIdx > 0 ? fileName.substring(0, dotIdx) : fileName;
         try {
-            String fileName = file.getName();
-            int dotIdx = fileName.lastIndexOf('.');
-            String setTitle = dotIdx > 0 ? fileName.substring(0, dotIdx) : fileName;
+            String encode = myMaps.getTxtEncode(new java.io.FileInputStream(file));
+            java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(new java.io.FileInputStream(file), encode));
+            return importLevelReader(reader, setTitle, silent);
+        } catch (Throwable ex) {
+            if (!silent) {
+                JOptionPane.showMessageDialog(this, "导入关卡文件失败: " + ex.getMessage(),
+                        "错误", JOptionPane.ERROR_MESSAGE);
+            }
+            return 0;
+        }
+    }
 
+    /**
+     * 从一段文本导入 —— 原版「剪切板导入」走的就是这条路，
+     * PC 侧原先把入口整个砍掉了（见 PORTING_AUDIT 2.4）。
+     */
+    public int importLevelText(String text, String setTitle, boolean silent) {
+        try {
+            return importLevelReader(
+                    new java.io.BufferedReader(new java.io.StringReader(text)), setTitle, silent);
+        } catch (Throwable ex) {
+            if (!silent) {
+                JOptionPane.showMessageDialog(this, "导入失败: " + ex.getMessage(),
+                        "错误", JOptionPane.ERROR_MESSAGE);
+            }
+            return 0;
+        }
+    }
+
+    /**
+     * 导入的核心：按原版 {@code imPort_Sets()} 的口径逐行解析一个关卡文档
+     * （XSB + Title/Author/Comment/Comment_end + Solution）。
+     *
+     * @param setTitle 目标关卡集名；不存在则新建
+     * @return 成功导入的关卡数
+     */
+    private int importLevelReader(java.io.BufferedReader reader, String setTitle, boolean silent)
+            throws Exception {
             long targetSetId = mySQLite.m_SQL.find_Set(setTitle);
             if (targetSetId <= 0) {
                 targetSetId = mySQLite.m_SQL.add_T(3, setTitle, "", "");
@@ -545,9 +583,6 @@ public class BoxManPC extends JFrame {
                 if (!silent) JOptionPane.showMessageDialog(this, "创建关卡集失败！", "错误", JOptionPane.ERROR_MESSAGE);
                 return 0;
             }
-
-            String encode = myMaps.getTxtEncode(new java.io.FileInputStream(file));
-            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(new java.io.FileInputStream(file), encode));
 
             StringBuilder g_Map = new StringBuilder();      //关卡地图
             StringBuilder g_Title = new StringBuilder();    //标题
@@ -652,10 +687,6 @@ public class BoxManPC extends JFrame {
                 JOptionPane.showMessageDialog(this, "成功导入关卡集: " + setTitle + "\n共导入 " + importedCount + " 个关卡", "导入成功", JOptionPane.INFORMATION_MESSAGE);
             }
             return importedCount;
-        } catch (Throwable ex) {
-            if (!silent) JOptionPane.showMessageDialog(this, "导入关卡文件失败: " + ex.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
-            return 0;
-        }
     }
 
     // ------------------------------------------------------------ 刷新

@@ -259,6 +259,19 @@ public class myActionBar extends JPanel {
         return false;
     }
 
+    /** 该 ActionBar 动作项是否可点（供自检/测试）—— 「尚未移植」的占位项会是 {@code false}。 */
+    public boolean isBarActionEnabled(String title) {
+        for (Component c : barActionStrip.getComponents()) {
+            if (c instanceof BarAction && ((BarAction) c).text.equals(title)) return ((BarAction) c).enabled;
+        }
+        return false;
+    }
+
+    /** 该溢出菜单项是否可点（供自检/测试）。 */
+    public boolean isActionEnabled(String title) {
+        return HoloPopupMenu.isEnabled(overflowMenu, title);
+    }
+
     /** ActionBar 上动作项的数量（含隐藏项） */
     public int getBarActionCount() {
         return barActionStrip.getComponentCount();

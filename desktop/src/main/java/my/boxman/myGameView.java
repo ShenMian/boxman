@@ -18,6 +18,9 @@ import java.util.Queue;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import my.boxman.compat.UiWindow;
+import my.boxman.compat.HoloAlertDialog;
+import my.boxman.compat.HoloContent;
+import my.boxman.compat.HoloPopupMenu;
 
 public class myGameView extends JFrame {
 
@@ -125,6 +128,9 @@ public class myGameView extends JFrame {
     public GameButton bt_BK = null;
 
     JPanel main_bottom; // 底部栏面板
+
+    /** 「更多」按钮弹出的选项菜单（原版 {@code res/menu/player.xml}），见 {@link #openOptionsMenu()}。 */
+    private JPopupMenu optionsMenu;
 
     // 正推，目标数、完成数、仓管员初始位置
     public int m_nGoals;
@@ -3104,121 +3110,400 @@ public class myGameView extends JFrame {
         }
     }
 
+    /**
+     * 原版 {@code myGameView} 的选项菜单 —— {@code res/menu/player.xml} 的 13 项，
+     * 由底栏「更多」按钮 {@code openOptionsMenu()} 弹出。
+     *
+     * <p>原版 {@code myGameView} 是 {@code FEATURE_NO_TITLE} + {@code FLAG_FULLSCREEN}，
+     * **没有 ActionBar**，所以这里不用 {@code myActionBar}；菜单外壳与 ActionBar 溢出菜单
+     * 共用同一套 {@code popup_menu_holo_dark} 样式，因此走 {@link HoloPopupMenu}。
+     *
+     * <p>条目顺序严格按 {@code player.xml}：设置… / 开关选项… / 重新开始 / 退至首 / 进至尾 /
+     * 导出… / 导入… / YASS求解 / 打开状态… / 保存状态 / 关于 / 操作说明 / 退出。
+     * （{@code player.xml} 里「Solver求解」整段被 {@code <!-- -->} 注释掉，原版不存在。）
+     * 唯一未接的「YASS求解」需要外部求解器，属阶段 F。
+     */
     public void openOptionsMenu() {
-        JPopupMenu menu = new JPopupMenu();
+        JPopupMenu menu = HoloPopupMenu.create();
 
-        JMenuItem itSetup1 = new JMenuItem("设置...");
-        itSetup1.addActionListener(e -> showSetup1Dialog());
-        menu.add(itSetup1);
+        HoloPopupMenu.addItem(menu, "设置...", this::showSetup1Dialog);
+        HoloPopupMenu.addItem(menu, "开关选项...", this::showSetup2Dialog);
+        HoloPopupMenu.addItem(menu, "重新开始", this::onReStart);
+        HoloPopupMenu.addItem(menu, "退至首", this::onHome);
+        HoloPopupMenu.addItem(menu, "进至尾", this::onEnd);
+        HoloPopupMenu.addItem(menu, "导出...", this::onExport);
+        HoloPopupMenu.addItem(menu, "导入...", this::onImport);
+        // player_Yass_Solver「YASS求解」：需要外部 YASS 求解器（ProcessBuilder），阶段 F。
+        HoloPopupMenu.addItem(menu, "打开状态...", this::onOpenState);
+        HoloPopupMenu.addItem(menu, "保存状态", this::onSaveState);
+        // 原版 player_about → myAbout2（关卡描述），不是 myAbout。
+        HoloPopupMenu.addItem(menu, "关于", () -> new myAbout2(this, myMaps.curMap).setVisible(true));
+        // 原版 player_help：Bundle 传 m_Num = 1。
+        HoloPopupMenu.addItem(menu, "操作说明", () -> new Help(1).setVisible(true));
+        HoloPopupMenu.addItem(menu, "退出", this::handleExit);
 
-        JMenuItem itSetup2 = new JMenuItem("开关选项...");
-        itSetup2.addActionListener(e -> showSetup2Dialog());
-        menu.add(itSetup2);
+        optionsMenu = menu;
+        if (bt_More.isShowing()) menu.show(bt_More, 0, -menu.getPreferredSize().height);
+    }
 
-        JMenuItem itReStart = new JMenuItem("重新开始");
-        itReStart.addActionListener(e -> {
-            int ret = JOptionPane.showConfirmDialog(this, "重新开始，确定吗？", "重新开始", JOptionPane.YES_NO_OPTION);
-            if (ret == JOptionPane.YES_OPTION) {
-                mMap.d_Moves = mMap.m_PicWidth;
-                if (bt_BK.isChecked()) {
-                    MyToast.showToast(this, "重新开始！", MyToast.LENGTH_SHORT);
-                    levelReset(true);
-                } else {
-                    MyToast.showToast(this, "重新开始！", MyToast.LENGTH_SHORT);
-                    levelReset(false);
-                    if (myMaps.isMacroDebug) {
-                        mMap.myMacro.clear();
-                        mMap.myMacro.add(0);
+    /** 原版 {@code R.id.player_ReStart}「重新开始」。 */
+    void onReStart() {
+        int ret = JOptionPane.showConfirmDialog(this, "重新开始，确定吗？", "重新开始", JOptionPane.YES_NO_OPTION);
+        if (ret != JOptionPane.YES_OPTION) return;
+        mMap.d_Moves = mMap.m_PicWidth;
+        if (bt_BK.isChecked()) {
+            MyToast.showToast(this, "重新开始！", MyToast.LENGTH_SHORT);
+            levelReset(true);
+        } else {
+            MyToast.showToast(this, "重新开始！", MyToast.LENGTH_SHORT);
+            levelReset(false);
+            if (myMaps.isMacroDebug) {
+                mMap.myMacro.clear();
+                mMap.myMacro.add(0);
+            }
+        }
+        mMap.curMoves = 0;
+        mMap.invalidate();
+    }
+
+    /** 原版 {@code R.id.player_Home}「退至首」。 */
+    void onHome() {
+        m_bYanshi = false;
+        m_bYanshi2 = false;
+        if (bt_BK.isChecked()) {
+            if (m_lstMovUnDo2.isEmpty()) {
+                MyToast.showToast(this, "没有了！", MyToast.LENGTH_SHORT);
+                m_bBusing = false;
+            } else {
+                m_nStep = m_lstMovUnDo2.size();
+                UpData4(1);
+            }
+        } else {
+            if (m_lstMovUnDo.isEmpty()) {
+                MyToast.showToast(this, "没有了！", MyToast.LENGTH_SHORT);
+                m_bBusing = false;
+            } else {
+                m_nStep = m_lstMovUnDo.size();
+                UpData2(1);
+            }
+        }
+    }
+
+    /** 原版 {@code R.id.player_End}「进至尾」。 */
+    void onEnd() {
+        m_bYanshi = false;
+        m_bYanshi2 = false;
+        if (bt_BK.isChecked()) {
+            if (m_lstMovReDo2.isEmpty()) {
+                MyToast.showToast(this, "没有了！", MyToast.LENGTH_SHORT);
+                m_bBusing = false;
+            } else {
+                if (m_lstMovUnDo2.isEmpty()) goHome();
+                m_nStep = m_lstMovReDo2.size();
+                UpData3(1);
+            }
+        } else {
+            if (m_lstMovReDo.isEmpty()) {
+                MyToast.showToast(this, "没有了！", MyToast.LENGTH_SHORT);
+                m_bBusing = false;
+            } else {
+                m_nStep = m_lstMovReDo.size();
+                mMap.Box_Row0 = -1;
+                m_nLastSteps = -1;
+                UpData1(1);
+            }
+        }
+    }
+
+    /** 原版 {@code R.id.player_save}「保存状态」。 */
+    void onSaveState() {
+        if (m_lstMovUnDo.size() > 0 || m_lstMovUnDo2.size() > 0) {
+            if ((myMaps.m_Sets[13] == 0 || m_iStep[2] <= 0) && m_nGoals_OK == m_nGoals
+                    && m_iStep[0] > 0 && myMaps.curMap.Level_id > 0)
+                saveAns(1);
+            else
+                saveAns(0);
+        } else {
+            MyToast.showToast(this, "没什么可保存的！", MyToast.LENGTH_SHORT);
+        }
+    }
+
+    /**
+     * 原版 {@code R.id.player_IN}「导入」：进入 {@link myActGMView}（动作管理）录入动作。
+     * 原版还把 {@code LOCAL}（{@code myMaps.getLocale(m_cArray)}）塞进 Bundle，
+     * 但 {@code myActGMView} 里接收那行是**注释掉的** —— 所以不用传。
+     */
+    void onImport() {
+        prepareImport();
+        new myActGMView(this, bt_BK.isChecked()).setVisible(true);
+    }
+
+    /** 「导入」在开窗之前的簿记（原版 {@code player_IN} 分支的前半段）。 */
+    void prepareImport() {
+        setACT(false);                                  // 非录制模式
+        myMaps.m_ActionIsRedy = false;
+        if (bt_BK.isChecked())
+            myMaps.m_nRecording_Bggin2 = m_lstMovUnDo2.size();  // 逆推录制起始点
+        else
+            myMaps.m_nRecording_Bggin = m_lstMovUnDo.size();    // 正推录制起始点
+    }
+
+    /**
+     * 原版 {@code R.id.player_load}「打开状态」。
+     *
+     * <p>「宏」调试中时，先弹一个「关闭调试」对话框问是否把关卡退回宏打开前的状态，
+     * 确认后才继续 {@link #onOpenState2()}（原版 {@code setCancelable(false)}，取消不清调试态）。
+     */
+    void onOpenState() {
+        if (!myMaps.isMacroDebug) {
+            onOpenState2();
+            return;
+        }
+        final JCheckBox isBack = HoloContent.check("关卡回到该“宏”打开前的状态", true);
+        HoloAlertDialog dlg = HoloAlertDialog.create(this, "关闭调试");
+        dlg.setContentView(isBack);
+        dlg.addButton("取消", null);
+        dlg.addButton("确定", () -> {
+            if (isBack.isSelected()) levelReset(false);   // 回到宏打开前的关卡状态（正推复位）
+            myMaps.isMacroDebug = false;
+            mMap.invalidate();
+            onOpenState2();
+        });
+        dlg.setVisible(true);
+    }
+
+    /** 原版 {@code myGameView.myOpenState()}：载入状态列表 → 修正解关标记 → 打开 {@link myStateBrow}。 */
+    void onOpenState2() {
+        loadStateList();
+        myMaps.m_StateIsRedy = false;
+        myStateBrow.my_Sort = 0;   // 每次，默认移动优先排序答案
+        new myStateBrow().setVisible(true);
+    }
+
+    /**
+     * 状态列表排序：按保存时间**倒序**（最后保存的在最前面）。
+     * 原版 {@code myGameView.myOpenState()} 里的匿名 {@code Comparator}。
+     */
+    static final Comparator<state_Node> STATE_TIME_DESC = new Comparator<state_Node>() {
+        public int compare(state_Node o1, state_Node o2) {
+            return o2.time.compareTo(o1.time);
+        }
+    };
+
+    /** {@link #onOpenState2()} 里「读数据」的部分（与开窗分开，便于测试）。 */
+    void loadStateList() {
+        mySQLite.m_SQL.load_StateList(myMaps.curMap.Level_id, myMaps.curMap.key);
+        // 仅修正本关卡是否解关（按关卡 id）；试推时（Num <= 0）不做修正
+        if (myMaps.curMap.Num > 0) {
+            myMaps.curMap.Solved = (myMaps.mState2.size() > 0);   // 修正关卡预览图之是否有答案
+            mySQLite.m_SQL.Set_L_Solved(myMaps.curMap.Level_id, myMaps.curMap.Solved ? 1 : 0, true);
+        }
+        // 状态按保存时间排序，最后保存的在最前面
+        Collections.sort(myMaps.mState1, STATE_TIME_DESC);
+    }
+
+    /** 原版 {@code player_EX} 打包给 {@link myExport} 的数据（与开窗分开，便于测试）。 */
+    static class ExportData {
+        String xsb;        // 关卡初态
+        String lurd;       // Lurd 动作
+        String local;      // 关卡正推现场
+        String local8;     // 关卡正推现场 -- 旋转
+        boolean isAns;     // 是否答案（正推已达答案）
+        int gifStart;
+        boolean[] rule;    // 需要显示标尺的格子
+        short[] boxNum;    // 迷宫箱子编号（人为）
+        String importYass;
+    }
+
+    /**
+     * 原版 {@code R.id.player_EX}「导出」：把当前关卡的
+     * 初态（XSB）/ 正推现场 / 正推现场-旋转 / Lurd 动作，连同标尺与箱子编号打包给 {@link myExport}。
+     */
+    void onExport() {
+        ExportData d = buildExportData();
+        new myExport(d.xsb, d.lurd, d.local, d.local8, d.isAns, d.gifStart, d.rule, d.boxNum, d.importYass)
+                .setVisible(true);
+    }
+
+    /** 构造 {@link #onExport()} 要传给 {@link myExport} 的全部数据。 */
+    ExportData buildExportData() {
+        ExportData d = new ExportData();
+        StringBuilder s_XSB = new StringBuilder();   // 关卡初态
+        StringBuilder s_XSB1 = new StringBuilder();  // 关卡正推现场
+        StringBuilder s_XSB8 = new StringBuilder();  // 关卡正推现场 -- 旋转
+        StringBuilder s_Lurd = new StringBuilder();  // Lurd
+        boolean isANS = (m_nGoals_OK == m_nGoals);
+
+        // 关卡初态
+        s_XSB.append(myMaps.curMap.Map).append("\nTitle: ").append(myMaps.curMap.Title)
+                .append("\nAuthor: ").append(myMaps.curMap.Author);
+        if (!myMaps.curMap.Comment.trim().isEmpty()) {
+            s_XSB.append("\nComment:\n").append(myMaps.curMap.Comment).append("\nComment-End:");
+        }
+
+        // 关卡正推现场
+        char ch;
+        for (int i = 0; i < myMaps.curMap.Rows; i++) {
+            for (int j = 0; j < myMaps.curMap.Cols; j++) {
+                ch = m_cArray[i][j];  // 正推迷宫
+                if (myMaps.m_Sets[13] == 1) {  // “互动双推”模式
+                    if (bk_cArray[i][j] == '$' || bk_cArray[i][j] == '*') {  // 只有逆推地图中的箱子将成为正推的目标点位
+                        switch (ch) {
+                            case '-': ch = '.'; break;
+                            case '$': ch = '*'; break;
+                            case '@': ch = '+';
+                        }
+                    } else {
+                        switch (ch) {
+                            case '.': ch = '-'; break;
+                            case '*': ch = '$'; break;
+                            case '+': ch = '@';
+                        }
                     }
                 }
-                mMap.curMoves = 0;
-                mMap.invalidate();
+                s_XSB1.append(ch);
             }
-        });
-        menu.add(itReStart);
+            if (i < myMaps.curMap.Rows - 1) s_XSB1.append('\n');
+        }
 
-        JMenuItem itHome = new JMenuItem("退至首");
-        itHome.addActionListener(e -> {
-            m_bYanshi = false;
-            m_bYanshi2 = false;
-            if (bt_BK.isChecked()) {
-                if (m_lstMovUnDo2.isEmpty()) {
-                    MyToast.showToast(this, "没有了！", MyToast.LENGTH_SHORT);
-                    m_bBusing = false;
-                } else {
-                    m_nStep = m_lstMovUnDo2.size();
-                    UpData4(1);
+        // 关卡正推现场 -- 旋转（m_nTrun 为偶数时行优先，奇数时列优先）
+        char ch2;
+        if (myMaps.m_nTrun % 2 == 0) {
+            for (int i = 0; i < myMaps.curMap.Rows; i++) {
+                for (int j = 0; j < myMaps.curMap.Cols; j++) {
+                    switch (myMaps.m_nTrun) {
+                        case 0: ch = m_cArray[i][j];
+                                ch2 = bk_cArray[i][j]; break;
+                        case 2: ch = m_cArray[myMaps.curMap.Rows - 1 - i][myMaps.curMap.Cols - 1 - j];
+                                ch2 = bk_cArray[myMaps.curMap.Rows - 1 - i][myMaps.curMap.Cols - 1 - j]; break;
+                        case 4: ch = m_cArray[i][myMaps.curMap.Cols - 1 - j];
+                                ch2 = bk_cArray[i][myMaps.curMap.Cols - 1 - j]; break;
+                        case 6: ch = m_cArray[myMaps.curMap.Rows - 1 - i][j];
+                                ch2 = bk_cArray[myMaps.curMap.Rows - 1 - i][j]; break;
+                        default: ch = '_'; ch2 = '_'; break;
+                    }
+                    s_XSB8.append(dualPush(ch, ch2));
                 }
-            } else {
-                if (m_lstMovUnDo.isEmpty()) {
-                    MyToast.showToast(this, "没有了！", MyToast.LENGTH_SHORT);
-                    m_bBusing = false;
-                } else {
-                    m_nStep = m_lstMovUnDo.size();
-                    UpData2(1);
+                if (i < myMaps.curMap.Rows - 1) s_XSB8.append('\n');
+            }
+        } else {
+            for (int j = 0; j < myMaps.curMap.Cols; j++) {
+                for (int i = 0; i < myMaps.curMap.Rows; i++) {
+                    switch (myMaps.m_nTrun) {
+                        case 1: ch = m_cArray[myMaps.curMap.Rows - 1 - i][j];
+                                ch2 = bk_cArray[myMaps.curMap.Rows - 1 - i][j]; break;
+                        case 3: ch = m_cArray[i][myMaps.curMap.Cols - 1 - j];
+                                ch2 = bk_cArray[i][myMaps.curMap.Cols - 1 - j]; break;
+                        case 5: ch = m_cArray[myMaps.curMap.Rows - 1 - i][myMaps.curMap.Cols - 1 - j];
+                                ch2 = bk_cArray[myMaps.curMap.Rows - 1 - i][myMaps.curMap.Cols - 1 - j]; break;
+                        case 7: ch = m_cArray[i][j];
+                                ch2 = bk_cArray[i][j]; break;
+                        default: ch = '_'; ch2 = '_'; break;
+                    }
+                    s_XSB8.append(dualPush(ch, ch2));
+                }
+                if (j < myMaps.curMap.Cols - 1) s_XSB8.append('\n');
+            }
+        }
+
+        char[] Move = {'l', 'u', 'r', 'd', 'L', 'U', 'R', 'D'};
+        byte t;
+        Iterator<Byte> myItr;
+
+        // 解关答案
+        if (!m_lstMovUnDo.isEmpty()) {
+            myItr = m_lstMovUnDo.iterator();
+            while (myItr.hasNext()) {
+                t = myItr.next();
+                s_Lurd.append(Move[t - 1]);
+            }
+        }
+        if (!isANS) {  // 若正推已经是答案，则不再导出逆推动作
+            if (!m_lstMovUnDo2.isEmpty()) {
+                if (s_Lurd.length() > 0) s_Lurd.append('\n');
+                s_Lurd.append('[').append(m_nCol0 + 1).append(',').append(m_nRow0 + 1).append(']');  // （x, y）-- 先列后行
+                myItr = m_lstMovUnDo2.iterator();
+                while (myItr.hasNext()) {
+                    t = myItr.next();
+                    s_Lurd.append(Move[t - 1]);
                 }
             }
-        });
-        menu.add(itHome);
+        }
 
-        JMenuItem itEnd = new JMenuItem("进至尾");
-        itEnd.addActionListener(e -> {
-            m_bYanshi = false;
-            m_bYanshi2 = false;
-            if (bt_BK.isChecked()) {
-                if (m_lstMovReDo2.isEmpty()) {
-                    MyToast.showToast(this, "没有了！", MyToast.LENGTH_SHORT);
-                    m_bBusing = false;
-                } else {
-                    if (m_lstMovUnDo2.isEmpty()) goHome();
-                    m_nStep = m_lstMovReDo2.size();
-                    UpData3(1);
-                }
-            } else {
-                if (m_lstMovReDo.isEmpty()) {
-                    MyToast.showToast(this, "没有了！", MyToast.LENGTH_SHORT);
-                    m_bBusing = false;
-                } else {
-                    m_nStep = m_lstMovReDo.size();
-                    mMap.Box_Row0 = -1;
-                    m_nLastSteps = -1;
-                    UpData1(1);
+        boolean[] my_Rule = new boolean[myMaps.curMap.Cols * myMaps.curMap.Rows];
+        short[] my_BoxNum = new short[m_nGoals];  // 按箱子数定义，记录“自动箱子编号”，以方便转换“人工箱子编号”
+        for (int i = 0; i < myMaps.curMap.Rows; i++) {
+            for (int j = 0; j < myMaps.curMap.Cols; j++) {
+                my_Rule[myMaps.curMap.Cols * i + j] = mark44[i][j];
+                if (m_iBoxNum2[i][j] > 0 && (m_cArray[i][j] == '$' || m_cArray[i][j] == '*')) {
+                    // 自动箱子编号与人工箱子编号建立关联
+                    my_BoxNum[m_iBoxNum2[i][j] - 1] = myMaps.m_bBianhao ? m_iBoxNum2[i][j] : m_iBoxNum[i][j];
                 }
             }
-        });
-        menu.add(itEnd);
+        }
 
-        JMenuItem itSave = new JMenuItem("保存状态");
-        itSave.addActionListener(e -> {
-            if (m_lstMovUnDo.size() > 0 || m_lstMovUnDo2.size() > 0) {
-                if ((myMaps.m_Sets[13] == 0 || m_iStep[2] <= 0) && m_nGoals_OK == m_nGoals && m_iStep[0] > 0 && myMaps.curMap.Level_id > 0)
-                    saveAns(1);
-                else
-                    saveAns(0);
-            } else {
-                MyToast.showToast(this, "没什么可保存的！", MyToast.LENGTH_SHORT);
+        d.xsb = s_XSB.toString();
+        d.lurd = s_Lurd.toString();
+        d.local = s_XSB1.toString();
+        d.local8 = s_XSB8.toString();
+        d.isAns = isANS;
+        d.gifStart = m_Gif_Start;
+        d.rule = my_Rule;
+        d.boxNum = my_BoxNum;
+        d.importYass = m_imPort_YASS;
+        return d;
+    }
+
+    /** 「互动双推」（{@code myMaps.m_Sets[13] == 1}）时把正推格按逆推格是否为箱子做点/箱/人互换。 */
+    private static char dualPush(char ch, char ch2) {
+        if (myMaps.m_Sets[13] != 1) return ch;
+        if (ch2 == '$' || ch2 == '*') {
+            switch (ch) {
+                case '-': return '.';
+                case '$': return '*';
+                case '@': return '+';
             }
-        });
-        menu.add(itSave);
+        } else {
+            switch (ch) {
+                case '.': return '-';
+                case '*': return '$';
+                case '+': return '@';
+            }
+        }
+        return ch;
+    }
 
-        JMenuItem itAbout = new JMenuItem("关于");
-        itAbout.addActionListener(e -> JOptionPane.showMessageDialog(this, "推箱快手 (BoxMan) PC版\n关卡: " + (myMaps.curMap != null ? myMaps.curMap.Title : ""), "关于", JOptionPane.INFORMATION_MESSAGE));
-        menu.add(itAbout);
+    // ================================================================ 测试钩子
 
-        JMenuItem itExit = new JMenuItem("退出");
-        itExit.addActionListener(e -> handleExit());
-        menu.add(itExit);
+    /** 供测试读取「更多」选项菜单（调用 {@link #openOptionsMenu()} 之后才有值）。 */
+    JPopupMenu optionsMenuForTest() {
+        return optionsMenu;
+    }
 
-        menu.show(bt_More, 0, -menu.getPreferredSize().height);
+    /** 供测试读取选项菜单的条目文字（不含分隔线）。 */
+    java.util.List<String> optionsMenuTitlesForTest() {
+        java.util.List<String> titles = new java.util.ArrayList<String>();
+        if (optionsMenu == null) return titles;
+        for (Component c : optionsMenu.getComponents()) {
+            if (c instanceof HoloPopupMenu.Row) titles.add(((HoloPopupMenu.Row) c).getText());
+        }
+        return titles;
     }
 
     /**
      * 把 PC 端的辅助入口挂到「地图右键菜单」上。
      *
-     * <p>原版 {@code myGameView} 没有菜单栏（{@code FEATURE_NO_TITLE} + {@code FLAG_FULLSCREEN}），
-     * 它的菜单在底栏「更多」按钮弹出的选项菜单里（{@code res/menu/player.xml}）。
-     * 因此桌面端不再给窗口安装 {@code JMenuBar}（那会多出一行、与原版不符），
-     * 但也不能把这些便利功能直接抹掉 —— 于是整体挪进不占界面空间的右键菜单。
+     * <p>⚠️ <b>这是 PC 侧的偏差，不是原版行为</b>：原版 {@code myGameView} /
+     * {@code myGameViewMap} 里**没有**任何 {@code registerForContextMenu} /
+     * {@code onCreateContextMenu} / {@code setOnLongClickListener}，地图上没有右键菜单。
+     * 原版去关卡编辑器 / 相似关卡对比 / 图像识别的路径是
+     * {@code myGridView} 的上下文菜单（见 {@code PORTING_AUDIT.md} 阶段 G）。
+     *
+     * <p>之所以暂时保留：这几项在 PC 上还没有其它入口，直接删会让功能不可达。
+     * 阶段 G 收口入口链后，应整体删掉本方法。
+     *
+     * <p>注意：原版 {@code player.xml} 里本来就有的条目（重新开始 / 导出 / 导入 / 打开状态 …）
+     * 一律放在底栏「更多」按钮的 {@link #openOptionsMenu()} 里，**不要**在这里重复挂一份。
      */
     private void installMapPopupMenu() {
 
