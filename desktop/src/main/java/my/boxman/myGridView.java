@@ -584,10 +584,17 @@ public class myGridView extends JFrame {
         dlg.setVisible(true);
     }
 
-    /** {@code import_dialog.xml} / {@code import_dialog2.xml} 共用的那几个开关。 */
+    /**
+     * {@code import_dialog.xml} / {@code import_dialog2.xml} 共用的那几个开关。
+     *
+     * <p>文案照 {@code import_dialog.xml}：{@code cb_xsb} 是 <b>「XSB」</b>、{@code cb_lurd} 是
+     * <b>「Lurd」</b>（不是「关卡 / 答案」——那是 {@code import_dialog3.xml} 的 {@code im_xsb}/
+     * {@code im_lurd}，属于 {@link BoxManPC#buildImportDialog()} 那一套）。两者都是
+     * {@code wrap_content}，所以用 {@link HoloContent#wrapCheck}。
+     */
     private JComponent buildImportOptions(boolean withEncoding) {
-        JCheckBox cbXsb = HoloContent.check32("关卡", myMaps.isXSB, 96);
-        JCheckBox cbLurd = HoloContent.check32("答案", myMaps.isLurd, 96);
+        JCheckBox cbXsb = HoloContent.wrapCheck("XSB", true);
+        JCheckBox cbLurd = HoloContent.wrapCheck("Lurd", myMaps.isLurd);
         // 原版是两个 CheckBox 互相兜底：都不选时自动把另一个勾上
         cbXsb.addActionListener(e -> {
             myMaps.isXSB = cbXsb.isSelected();
@@ -598,7 +605,7 @@ public class myGridView extends JFrame {
             if (!cbLurd.isSelected() && !cbXsb.isSelected()) cbXsb.setSelected(true);
         });
 
-        JCheckBox cbOpen = HoloContent.check32("仅一个关卡时自动打开", myMaps.m_Sets[31] == 1, 288);
+        JCheckBox cbOpen = HoloContent.wrapCheck("仅有一个关卡时，自动打开", myMaps.m_Sets[31] == 1);
         cbOpen.addActionListener(e -> myMaps.m_Sets[31] = cbOpen.isSelected() ? 1 : 0);
 
         JPanel row1 = HoloContent.row(cbXsb, cbLurd);
@@ -620,27 +627,34 @@ public class myGridView extends JFrame {
         return HoloContent.column(row1, HoloContent.row(rbAuto, rbGbk, rbUtf8), cbOpen);
     }
 
-    /** 导入一个「导入/」目录下的文档（关卡集名取文档名去掉扩展名）。 */
+    /**
+     * 导入一个「导入/」目录下的文档。
+     *
+     * <p>落库目标是<b>当前关卡集</b>（{@code myMaps.m_Set_id}）—— 原版
+     * {@code imPort_Sets(..., 1)} 进 {@code mySplitLevelsFragment} 后就是
+     * {@code add_L(myMaps.m_Set_id, nd)}。PC 侧原先按「文档名 → 关卡集名」找/建集，
+     * 会误在扩展组里新建一个集，已改回按 id 落库。
+     */
     void importDocFile(File f, String fileName) {
         int dot = fileName.lastIndexOf('.');
         String setTitle = dot > 0 ? fileName.substring(0, dot) : fileName;
 
-        // PC 侧没有独立的导入 Activity，复用 BoxManPC 的解析器；它会把关卡加进同名关卡集
+        // PC 侧没有独立的导入 Activity，复用 BoxManPC 的解析器
         BoxManPC importer = findBoxManPC();
         if (importer != null) {
-            importer.importLevelFile(f);
+            importer.importLevelFileInto(f, mSetId, true);
         } else {
-            new BoxManPC().importLevelFile(f);
+            new BoxManPC().importLevelFileInto(f, mSetId, true);
         }
         afterImport(setTitle);
     }
 
-    /** 导入剪切板文本（关卡集名用当前关卡集名，原版就是导进当前集）。 */
+    /** 导入剪切板文本（原版也是导进当前关卡集）。 */
     void importClipText(String text) {
         BoxManPC importer = findBoxManPC();
         int n = (importer != null)
-                ? importer.importLevelText(text, myMaps.sFile, false)
-                : new BoxManPC().importLevelText(text, myMaps.sFile, false);
+                ? importer.importLevelTextInto(text, mSetId, true)
+                : new BoxManPC().importLevelTextInto(text, mSetId, true);
         if (n > 0) afterImport(myMaps.sFile);
     }
 

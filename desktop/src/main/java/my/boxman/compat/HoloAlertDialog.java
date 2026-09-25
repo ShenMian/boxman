@@ -263,8 +263,14 @@ public class HoloAlertDialog extends JDialog {
      * 追加一个按钮。原版按钮栏顺序是 {@code button2 / button3 / button1}（{@code button1} 在最右），
      * 每个按钮 {@code layout_weight="1"}，因此按钮**等分铺满**整条按钮栏。
      *
+     * <p>⚠️ {@code action} 为 {@code null} <b>不等于「点了没反应」</b>：原版
+     * {@code AlertDialog} 的按钮在 {@code onClick()} 里无条件先 {@code dismiss()}，
+     * 监听器只是可选的附加动作。所以 {@code .setNegativeButton("取消", null)}
+     * 是「点了就关」而不是死按钮 —— 这里用 {@code dispose()} 兜底（原先写成空动作，
+     * {@code 取消} 按钮点不动，是个已修的移植 bug）。
+     *
      * @param text   按钮文字
-     * @param action 点击后的动作（可为 null）
+     * @param action 点击后的动作；{@code null} 表示只关闭对话框
      */
     public JButton addButton(String text, final Runnable action) {
         JButton b = new JButton(text) {
@@ -292,8 +298,11 @@ public class HoloAlertDialog extends JDialog {
         b.setPreferredSize(new Dimension(BUTTON_MIN_WIDTH, BUTTON_BAR_HEIGHT));
         b.setMaximumSize(new Dimension(Integer.MAX_VALUE, BUTTON_BAR_HEIGHT));
         b.addActionListener(e -> {
+            // 原版 AlertDialog 的按钮无条件先 dismiss，监听器只是可选的附加动作
             if (action != null) {
                 action.run();
+            } else {
+                dispose();
             }
         });
         if (buttonBar.getComponentCount() > 0) {

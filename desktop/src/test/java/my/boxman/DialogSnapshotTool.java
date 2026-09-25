@@ -54,7 +54,7 @@ public class DialogSnapshotTool {
         dialogs.put("d04-Rule", new RuleDialog(null, (c, m) -> {}));
         dialogs.put("d05-Color", new ColorDialog(null, Color.BLUE, c -> {}));
         dialogs.put("d06-Find", new FindDialog(null, (sets, sim, ans, sort, ib) -> {}));
-        dialogs.put("d08-UrlInput", new UrlInputDialog(null, s -> {}));
+        dialogs.put("d08-UrlInput", new UrlInputDialog(null, -1, (id, u, n) -> {}));
         dialogs.put("d09-Query", new QueryDialog(null, r -> {}));
         dialogs.put("d11-GifMake", new myGifMakeDialog(null, "", 0, new boolean[8], new short[4]));
 

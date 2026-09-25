@@ -110,10 +110,14 @@ public class Phase5DialogTest {
 
     @Test
     public void testUrlInputDialog() {
-        UrlInputDialog dlg = new UrlInputDialog(null, content -> {});
+        // 原版 get_uil_dialog.xml：标题「导入比赛关卡」+「网站 / 期号」两栏（都是数字框）
+        UrlInputDialog dlg = new UrlInputDialog(null, -1, (id, u, n) -> {});
         assertNotNull("UrlInputDialog should be created", dlg);
-        assertNotNull("tfUrl should exist", dlg.tfUrl);
-        assertNotNull("progressBar should exist", dlg.progressBar);
+        assertNotNull("dialog_uil 应存在", dlg.tfUil);
+        assertNotNull("dialog_num2 应存在", dlg.tfNum);
+        assertNotNull("网站栏应预填 myMaps.uil", dlg.tfUil.getText());
+        assertEquals("期号栏初值应为空", "", dlg.tfNum.getText());
+        assertEquals("期号栏 hint", UrlInputDialog.NUM_HINT, dlg.tfNum.getToolTipText());
     }
 
     @Test
