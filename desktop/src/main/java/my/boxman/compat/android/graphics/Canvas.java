@@ -178,6 +178,22 @@ public class Canvas {
         }
     }
 
+    /** 原版 {@code Canvas.drawOval(RectF, Paint)} —— 用来画「识别」界面的四个边线指示灯。 */
+    public void drawOval(RectF oval, Paint paint) {
+        if (g2d != null && oval != null && paint != null) {
+            paint.applyTo(g2d);
+            int x = (int) Math.min(oval.left, oval.right);
+            int y = (int) Math.min(oval.top, oval.bottom);
+            int w = (int) Math.abs(oval.right - oval.left);
+            int h = (int) Math.abs(oval.bottom - oval.top);
+            if (paint.getStyle() == Paint.Style.STROKE) {
+                g2d.drawOval(x, y, w, h);
+            } else {
+                g2d.fillOval(x, y, w, h);
+            }
+        }
+    }
+
     public void drawText(String text, float x, float y, Paint paint) {
         if (g2d != null && text != null && paint != null) {
             paint.applyTo(g2d);

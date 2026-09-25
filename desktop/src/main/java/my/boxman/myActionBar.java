@@ -186,6 +186,56 @@ public class myActionBar extends JPanel {
         barActionStrip.repaint();
     }
 
+    /**
+     * 改写 ActionBar 上某个动作项的标题（原版 {@code MenuItem.setTitle}）。
+     * 「图像识别」界面的「识别 / 编辑」就是靠它来回切换的。
+     *
+     * @return 是否找到并改写了
+     */
+    public boolean setBarActionTitle(String title, String newTitle) {
+        boolean found = false;
+        for (Component c : barActionStrip.getComponents()) {
+            if (c instanceof BarAction && ((BarAction) c).text.equals(title)) {
+                ((BarAction) c).setText(newTitle);
+                found = true;
+            }
+        }
+        if (found) {
+            barActionStrip.revalidate();
+            barActionStrip.repaint();
+        }
+        return found;
+    }
+
+    /** ActionBar 上动作项的标题（按加入顺序，含隐藏项）—— 供自检/测试用 */
+    public List<String> getBarActionTitles() {
+        List<String> out = new ArrayList<>();
+        for (Component c : barActionStrip.getComponents()) {
+            if (c instanceof BarAction) out.add(((BarAction) c).text);
+        }
+        return out;
+    }
+
+    /**
+     * 以编程方式触发某个动作项（等价于点它一下）—— 供自检/测试用。
+     * 走的是与鼠标点击完全相同的分支，所以能验证真实接线。
+     *
+     * @return 找到并已执行返回 {@code true}；找不到或该项被置灰返回 {@code false}
+     */
+    public boolean fireBarAction(String title) {
+        for (Component c : barActionStrip.getComponents()) {
+            if (c instanceof BarAction && ((BarAction) c).text.equals(title)) {
+                BarAction b = (BarAction) c;
+                if (b.enabled && b.action != null) {
+                    b.action.run();
+                    return true;
+                }
+                return false;
+            }
+        }
+        return false;
+    }
+
     /** 按标题设置菜单项的勾选态（原版 android:checkable="true"） */
     public void setActionChecked(String title, boolean checked) {
         HoloPopupMenu.setChecked(overflowMenu, title, checked);
@@ -352,7 +402,7 @@ public class myActionBar extends JPanel {
 
     /** 原版 showAsAction="always"：ActionBar 上的纯文字按钮，宽 action_button_min_width=56dp */
     private class BarAction extends JComponent {
-        private final String text;
+        private String text;
         private final Runnable action;
         private boolean enabled = true;
         private boolean hover;
@@ -380,6 +430,11 @@ public class myActionBar extends JPanel {
                     if (enabled && BarAction.this.action != null) BarAction.this.action.run();
                 }
             });
+        }
+
+        /** 原版 {@code MenuItem.setTitle} —— 例如「识别」↔「编辑」 */
+        void setText(String text) {
+            this.text = text;
         }
 
         @Override

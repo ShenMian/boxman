@@ -99,7 +99,23 @@ public class HoloChoiceDialog extends HoloAlertDialog {
     /** 先选中、再点「确定」生效；未选中时点「确定」什么都不做（原版判 {@code m_nItemSelect > -1}）。 */
     public static HoloChoiceDialog selectThenOk(Frame owner, String title, JComponent extra,
                                                 String[] items, OnPick onPick) {
+        return selectThenOk(owner, title, extra, items, -1, onPick);
+    }
+
+    /**
+     * 同上，但可以预选一项 —— 对应原版
+     * {@code .setSingleChoiceItems(items, <初始下标>, listener)}（「图像识别」的
+     * 「清理箱子」等选项框就是这种，默认选中第 0 项）。
+     *
+     * @param initialIndex 预选下标，{@code <0} 表示不预选
+     */
+    public static HoloChoiceDialog selectThenOk(Frame owner, String title, JComponent extra,
+                                                String[] items, int initialIndex, OnPick onPick) {
         HoloChoiceDialog d = new HoloChoiceDialog(owner, title, extra, items);
+        if (initialIndex >= 0 && initialIndex < items.length) {
+            d.list.setSelectedIndex(initialIndex);
+            d.list.ensureIndexIsVisible(initialIndex);
+        }
         d.addButton("取消", d::dispose);
         JButton ok = d.addButton("确定", () -> {
             int i = d.list.getSelectedIndex();

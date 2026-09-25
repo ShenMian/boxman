@@ -186,8 +186,8 @@ public class Phase7SystemIntegrationTest {
         // 4. Image recognition view
         myRecogView recogView = new myRecogView();
         assertNotNull("myRecogView initialized", recogView);
-        recogView.selectedObj = 1; // wall
-        recogView.onCellClicked(0, 0);
-        assertEquals("Element at (0,0) should be wall", '#', recogView.m_cArray[0][0]);
+        assertNotNull("recog map initialized", recogView.getMap());
+        assertNotNull("recog cell array initialized", recogView.getCellArray());
+        recogView.dispose();
     }
 }

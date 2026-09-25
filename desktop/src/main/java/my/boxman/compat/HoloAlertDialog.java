@@ -139,6 +139,18 @@ public class HoloAlertDialog extends JDialog {
     private JButton defaultButton;
     private boolean sized;
 
+    /**
+     * 构造一个「空壳」Holo 对话框 —— 等价于原版
+     * {@code new AlertDialog.Builder(ctx, AlertDialog.THEME_HOLO_DARK).setTitle(t).create()}，
+     * 内容与按钮随后由调用方自行追加。
+     *
+     * <p>原版「图像识别」的「请选择:」（取消 / 退出 / 进入编辑）就是这种：
+     * 只有标题和按钮栏，内容区是空的。
+     */
+    public static HoloAlertDialog create(Frame owner, String title) {
+        return new HoloAlertDialog(owner, title);
+    }
+
     protected HoloAlertDialog(Frame owner, String title) {
         super(owner, true);
         this.dialogTitle = title == null ? "" : title;

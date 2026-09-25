@@ -23,6 +23,10 @@ public class RectF {
         this.bottom = bottom;
     }
 
+    public boolean contains(float x, float y) {
+        return left < right && top < bottom && x >= left && x < right && y >= top && y < bottom;
+    }
+
     public float width() {
         return right - left;
     }

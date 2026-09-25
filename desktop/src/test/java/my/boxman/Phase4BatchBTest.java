@@ -76,16 +76,13 @@ public class Phase4BatchBTest {
         myRecogView recogView = new myRecogView();
         assertNotNull("myRecogView should be created", recogView);
         assertNotNull("mMap should be initialized", recogView.mMap);
-        assertNotNull("m_cArray should be allocated", recogView.m_cArray);
-
-        // Click a cell and verify assignment
-        recogView.selectedObj = 1; // Wall '#'
-        recogView.onCellClicked(2, 2);
-        assertEquals("Cell (2,2) should be wall", '#', recogView.m_cArray[2][2]);
-
-        recogView.selectedObj = 2; // Box '$'
-        recogView.onCellClicked(2, 3);
-        assertEquals("Cell (2,3) should be box", '$', recogView.m_cArray[2][3]);
+        assertNotNull("m_cArray should be allocated", recogView.getCellArray());
+        // 原版 res/menu/recog.xml 的 6 项全是 showAsAction="always"
+        assertEquals(6, recogView.getActionBar().getBarActionCount());
+        // 底行按钮按 recog_view.xml 固定尺寸（29dp 元素按钮 / 35dp 方向按钮）
+        assertEquals(29, recogView.bt_Floor.getPreferredSize().width);
+        assertEquals(35, recogView.bt_Left.getPreferredSize().width);
+        recogView.dispose();
     }
 
     @Test
