@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/ShenMian/boxman/actions/workflows/ci.yml/badge.svg)](https://github.com/ShenMian/boxman/actions/workflows/ci.yml)
 
-This is a port of the Android Sokoban game [《推箱快手》(BoxMan)](https://github.com/yuweng227/BoxMan_And) to the desktop.
+This is a port of [BoxMan](https://github.com/yuweng227/BoxMan_And)[^boxman] to the desktop.
+
+[^boxman]: Its original name in Chinese is 推箱快手.
 
 ## Requirements
 
