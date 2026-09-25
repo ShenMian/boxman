@@ -24,85 +24,19 @@ import my.boxman.compat.HoloPopupMenu;
 
 public class myGameView extends JFrame {
 
-    /** 底栏高度：原版 main_bottom 的 RadioGroup 实测 163px / density 3.4 ≈ 48dp */
-    private static final int BOTTOM_BAR_HEIGHT = 48;
-    /** 底栏图标：原版 drawable 为 32×32 px（mdpi），截图实测 106×108px ≈ 31×32dp */
-    private static final int BOTTOM_ICON_SIZE = 32;
-    /** 底栏文字：原版 res/values/style.xml 的 tab_style 为 textSize="9.0dip" */
-    private static final int BOTTOM_TEXT_SIZE = 9;
-    /** 原版 tab_style 的 layout_margin="2.0dip"（顶）+ 图标 32dp + 文字行高 ≈ 11dp */
-    private static final int TAB_MARGIN = 2;
-    private static final int TAB_TEXT_LINE = 11;
-    private static final Color TAB_BG = new Color(0x77, 0x88, 0x99);
-    private static final Color TAB_BG_CHECKED = new Color(0x44, 0x55, 0x66);
-
-    public static class GameButton extends JToggleButton {
-        private ActionListener longClickListener = null;
-
+    /**
+     * 底栏按钮 = 原版 {@code res/values/style.xml} 的 {@code tab_style}。
+     *
+     * <p>{@code main_bottom} 与 {@code myEditView} 的 {@code edit_bottom} 用的是同一份样式，
+     * 实现已提到 {@link my.boxman.compat.HoloTabBar.TabButton}；这里只留一个名字。
+     */
+    public static class GameButton extends my.boxman.compat.HoloTabBar.TabButton {
         public GameButton(String text) {
             super(text);
-            initButton();
         }
 
         public GameButton(String text, Icon icon) {
             super(text, icon);
-            initButton();
-        }
-
-        private void initButton() {
-            setFocusPainted(false);
-            // 原版 CheckBox 用了 tab_style，其中 android:button="@null"，
-            // 即没有按钮边框/立体感，只有 RadioGroup 的纯色底。
-            setBorderPainted(false);
-            setContentAreaFilled(false);
-            setOpaque(false);
-            setRolloverEnabled(false);
-
-            setVerticalTextPosition(SwingConstants.BOTTOM);
-            setHorizontalTextPosition(SwingConstants.CENTER);
-            setIconTextGap(0);
-            setBorder(new EmptyBorder(TAB_MARGIN, 0,
-                    BOTTOM_BAR_HEIGHT - TAB_MARGIN - BOTTOM_ICON_SIZE - TAB_TEXT_LINE, 0));
-            setMargin(new Insets(0, 0, 0, 0));
-            setFont(new Font("Microsoft YaHei", Font.PLAIN, BOTTOM_TEXT_SIZE));
-            setBackground(TAB_BG);
-            setForeground(Color.WHITE);
-
-            addItemListener(e -> setBackground(isSelected() ? TAB_BG_CHECKED : TAB_BG));
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            // 原版是纯色底；Swing 默认 LAF 会给 JToggleButton 画渐变边框，这里自己填底色。
-            g.setColor(getBackground());
-            g.fillRect(0, 0, getWidth(), getHeight());
-            super.paintComponent(g);
-        }
-
-        public boolean isChecked() {
-            return isSelected();
-        }
-
-        public void setChecked(boolean b) {
-            setSelected(b);
-        }
-
-        public void setTextColor(int argb) {
-            setForeground(new Color(argb, true));
-        }
-
-        public void setBackgroundColor(int argb) {
-            setBackground(new Color(argb, true));
-        }
-
-        public void setOnLongClickListener(ActionListener listener) {
-            this.longClickListener = listener;
-        }
-
-        public void onKeyLongPress(int code, Object event) {
-            if (longClickListener != null) {
-                longClickListener.actionPerformed(new ActionEvent(this, ActionEvent.ACTION_PERFORMED, "longPress"));
-            }
         }
     }
 
@@ -261,63 +195,11 @@ public class myGameView extends JFrame {
     }
 
     private Icon getScaledIcon(String resName) {
-        BufferedImage img = ResourceLoader.getDrawable(resName);
-        if (img != null) {
-            Image scaled = img.getScaledInstance(BOTTOM_ICON_SIZE, BOTTOM_ICON_SIZE, Image.SCALE_SMOOTH);
-            return new ImageIcon(scaled);
-        }
-        return null;
-    }
-
-    /**
-     * 底栏等分列布局。
-     *
-     * <p>原版 RadioGroup 里 7 个 CheckBox 都是 {@code layout_width="fill_parent"} +
-     * {@code layout_weight="1.0"}，即每格精确占 {@code 宽/7}（370/7 ≈ 52.86dp），
-     * 图标因此落在 26.4 / 79.3 / 132.1 … 这些位置上。
-     *
-     * <p>Swing 的 {@code GridLayout} 在总宽不能整除时会留边距（370 = 7×52 + 6，
-     * 于是左右各留 3px、整体右移 3px）；{@code GridBagLayout} 又会被按钮的最小宽度
-     * 撑开。所以这里直接按 1/7 切，和原版一一对应。
-     */
-    private static class BottomBarLayout implements LayoutManager {
-        @Override
-        public void addLayoutComponent(String name, Component comp) {
-        }
-
-        @Override
-        public void removeLayoutComponent(Component comp) {
-        }
-
-        @Override
-        public Dimension preferredLayoutSize(Container parent) {
-            return new Dimension(0, BOTTOM_BAR_HEIGHT);
-        }
-
-        @Override
-        public Dimension minimumLayoutSize(Container parent) {
-            return new Dimension(0, BOTTOM_BAR_HEIGHT);
-        }
-
-        @Override
-        public void layoutContainer(Container parent) {
-            int n = parent.getComponentCount();
-            if (n == 0) return;
-            int w = parent.getWidth();
-            int h = parent.getHeight();
-            for (int i = 0; i < n; i++) {
-                int left = Math.round((float) w * i / n);
-                int right = Math.round((float) w * (i + 1) / n);
-                parent.getComponent(i).setBounds(left, 0, right - left, h);
-            }
-        }
+        return my.boxman.compat.HoloTabBar.icon(resName);
     }
 
     private JPanel createBottomBar() {
-        JPanel bar = new JPanel(new BottomBarLayout());
-        bar.setBackground(TAB_BG);
-        // 原版 main_bottom 高度由 RadioGroup 撑出，实测 163px / 3.4 ≈ 48dp
-        bar.setPreferredSize(new Dimension(0, BOTTOM_BAR_HEIGHT));
+        JPanel bar = my.boxman.compat.HoloTabBar.bar();
 
         bt_UnDo = new GameButton("后退", getScaledIcon("undobtn"));
         bt_ReDo = new GameButton("前进", getScaledIcon("redobtn"));

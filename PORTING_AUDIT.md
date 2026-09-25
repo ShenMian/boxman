@@ -1998,4 +1998,128 @@ Holo 按钮的半透明底必须有正确的合成背景才不会发灰。
 | `layout_margin="2dp"` | PC 侧仍是 `Box.createHorizontalStrut(4)`，**未还原 2dp margin** —— 间距偏小，属「布局」条目 |
 | `minWidth/minHeight` | 只在未显式 `setPreferredSize` 时生效（对应 `AT_MOST` vs `EXACTLY`） |
 
-**当前基线：39 个用例类 / 412 个测试用例，全部通过。**
+**当前基线：40 个用例类 / 428 个测试用例，全部通过**（本行写于阶段 G ⑤，已由阶段 H 更新）。
+
+---
+
+## 阶段 H —— 「关卡编辑器」版面还原：顶行信息栏 + 底栏（已完成，2026-09-25）
+
+原版参照：`screenshot_20260925_125127_my.boxman.jpg`（1260×2844，density 3.4051）。
+该截图是 **`FLAG_FULLSCREEN` + `hideSystemUI()` 的沉浸态**：应用内容 = y 139..2843，
+即 **370 × 794.3dp**（不是普通界面那种扣掉导航栏的 780dp，见文末「已知残差」）。
+
+按 1dp = 1px 量出来的两处**结构性**偏差，都改掉了。
+
+### 1. 顶行信息栏高 39dp，应为 30dp
+
+**根因：原版这段几何写在「设备像素」里，PC 侧写成了 dp。**
+
+```java
+// 原版 BoxMan.onCreate()：m_nWinWidth = metric.widthPixels  ← 设备像素（1260）
+obj_Width = myMaps.m_nWinWidth / 10;                      // 126
+if (obj_Width > m_PicWidth*2) obj_Width = m_PicWidth*2;   // 夹到 100 设备像素
+m_nArenaTop = obj_Width + 2;                              // 102 设备像素 = 29.96dp
+```
+
+PC 端 `myMaps.m_nWinWidth` 是 **dp**（370），直接 `/10` 得 37 —— 而 `m_PicWidth*2 = 100`
+这个上限**永远够不着**，于是顶栏变成 39dp（比原版高 9dp），5 个素材槽也各宽了 7.6dp。
+PC 侧还额外加了一条 `if (obj_Width < 30) obj_Width = 30;`（原版没有）。
+
+改法（`myEditViewMap.initView()`）：把屏幕宽先折回设备像素再套原式，
+并把 `+2 / 1 / +10 / 5` 这些裸像素常量一起折成 dp。
+
+```java
+int screenDev = Math.round(myMaps.m_nWinWidth * myMaps.DENSITY);   // 370 × 3.4051 = 1260
+obj_WidthDev = Math.min(screenDev / 10, m_PicWidth * 2);           // 100（设备像素）
+obj_Width    = dp(obj_WidthDev);                                   // 29dp
+m_nArenaTop  = obj_Width + dp(2);                                  // 30dp
+```
+
+`myMaps.DENSITY = 3.4051f` 是本轮新增的常量（原版 `m_nWinWidth` 是设备像素、
+PC 是 dp，凡「原版写死像素」的地方都要用它）。
+
+**实测对照**（原版折算成 dp / PC 快照）：
+
+| 项 | 原版 | 改前 PC | 改后 PC |
+|---|---|---|---|
+| 顶栏高 | 29.96dp | 39 | **30** |
+| 地板槽 | [0.29, 29.66] | [1, 38] | **[0, 29]** |
+| 墙槽 | [29.95, 58.44]（**98px 宽**） | [39, 76]（100px 宽） | **[30, 58]**（98px 宽） |
+| 目标槽 | [60.21, 89.57] | [78, 115] | **[60, 89]** |
+| 箱子槽 | [90.18, 119.53] | [117, 154] | **[90, 119]** |
+| 仓管员槽 | [120.14, 149.50] | [156, 193] | **[120, 149]** |
+| 尺寸框左缘 | 152.11 | 203 | **152** |
+| 字号 | 40 设备像素 = 11.75dp | 14 | **12** |
+
+> ⚠️ **原版 `rtW` 的笔误照抄了。** 原版写的是
+> `rtW.set(obj_Width+2, 1, obj_Width+obj_Width, obj_Width+1)` —— 右边界少加了一个间隔，
+> 墙面素材只有 **98 设备像素**宽（其它 4 个是 100）。截图实测 floor = 1..100、wall = 102..199，
+> 证实是真·98px。PC 侧原先「顺手修好」成了 100px，本轮**改回照抄**。
+> 判据见 `MEMORY.md` 的硬禁忌：先看原版是不是笔误/注释掉，再决定改不改。
+
+### 2. 底栏 34dp 且只有文字、没有图标
+
+原版 `edit_view.xml` 的 `edit_bottom`：
+
+```xml
+<RadioGroup android:background="#ff778899" android:gravity="center_vertical">
+    <CheckBox android:id="@+id/bt_UnDo2" style="@style/tab_style"
+              android:layout_marginTop="2.0dp" android:drawableTop="@drawable/unbit2" android:text="撤销"/>
+    … 共 8 个（撤销/重做/剪切/复制/粘贴/变换/保存/更多）
+</RadioGroup>
+```
+
+`tab_style` = `textSize 9dip` + `layout_margin 2dip` + `button="@null"` + `layout_weight 1.0`
+→ **精确 1/8 等分**（370/8 = 46.25dp），实测底栏高 163px = **47.87dp**。
+
+PC 侧原先是 `GridLayout(1, 8, 4, 4)` + `EmptyBorder(4,4,4,4)` + **纯文字** `JToggleButton`
+（无图标、高 34dp、格子被 4px 间隙与边距挤窄）。`GridLayout` 正是 `RENDER_NOTES.md` 里
+明令不要用来做 1/N 等分底栏的那个。
+
+改法：把 `myGameView`（`main_bottom`）里已经验证过的那套 `tab_style` 实现提成共用件
+**`compat/HoloTabBar`**（`TabButton` + `TabBarLayout` + 常量），两个界面共用
+—— 原版本来就是同一份 `@style/tab_style`。
+
+**顺带对齐的三个细节**（都在原版截图上量过）：
+
+| 细节 | 原版实测 | 改前 PC | 改后 PC |
+|---|---|---|---|
+| 禁用项的**图标** | **不灰**，峰值 (233,237,240) | 被 FlatLaf 调灰 | 不灰 |
+| 禁用项的**文字** | `#80ffffff` 叠在 `#778899` ≈ (187,196,204) | (153,153,153) | **(187,196,204)** |
+| 启用项文字 | 纯白 | 纯白 | 纯白 |
+| 「粘贴」初始态 | `setEnabled(!myMaps.loadClipper().equals(""))` → 空剪切板下**禁用** | 恒 `true` | 跟随剪切板 |
+
+- **图标不灰**的原因：`android:drawableTop` 是一张**没有 state list** 的 PNG，
+  `setEnabled(false)` 不影响它；只有文字色 `?attr/textColorPrimaryDisableOnly`
+  是 ColorStateList。所以 `TabButton.paintComponent` 改成**整体自绘**
+  （与 `compat/HoloButton` 同一套路，**不调 `super.paintComponent`**）。
+- **文字基线**按原版模型放：CheckBox 高 `48-2-2 = 44dp`、padding 0、`drawableTop` 占 32dp，
+  文字排在剩下的 12dp 里居中 →
+  `baseline = 图标下沿 + (12 + ascent - descent) / 2`。
+  实测文字墨迹 rel 3..44 vs 原版 3.23..43.75。
+
+### 3. 实测对照（整屏）
+
+| 项 | 原版 | PC |
+|---|---|---|
+| 顶栏高 | 29.96dp | 30 |
+| 底栏高 | 47.87dp | 48 |
+| 底栏 8 格宽 | 46.25dp | 46.25（`round(370*i/8)`） |
+| 底栏图标 | 30.54dp 墨迹（32dp 位图） | 31 墨迹（32dp 位图） |
+| 网格上缘偏移 | 80.71dp（理论 80.73） | 166.0（理论 166.0） |
+| 网格单元 | 37.0dp | 37 |
+
+**新增测试**：`Phase29EditViewLayoutTest`（16 个用例）—— 顶栏高/素材槽 5 个矩形/尺寸框四边/
+墙槽 98px 笔误/字号；底栏 8 格、48dp、平底 `#778899`、精确 1/8 切列、图标 32dp、
+文字 9dip、禁用态「图标亮 + 文字半白」、启用态纯白、粘贴跟随剪切板；
+以及整屏渲染的 5 个色带锚点。
+
+### 4. 已知残差（未改，留给用户判断）
+
+| 残差 | 量级 | 说明 |
+|---|---|---|
+| **内容区高 780dp vs 原版 794.3dp** | **1.8%** | 原版 `myEditView` / `myGameView` 是沉浸态（`hideSystemUI()`），内容区 = 794.3dp；PC 全局约定是 370×780（`UiWindow` 的注释里扣掉了导航栏，那对沉浸态界面是多余的）。**没改** —— 改它要动 `WindowSizingTest` 与 15 个窗口的既有约定。表现：地图区 702dp vs 716.5dp，网格**垂直**居中位置差 7.2dp（网格尺寸不受影响，因为 10 列宽先卡住缩放）。 |
+| 尺寸框文字基线 | ~2dp | 由 `getTextBounds()` 的 `rt.height()` 决定，而 PC 的串 `8列8行 [箱:4 标:4]` 含 `[` `]` 下降部、原版串 `10列15行 B-0 G-0` 不含 → 串相关，不是版面错。 |
+| 底栏文字基线 | ~0.5dp | Microsoft YaHei 与 Noto Sans CJK 的 ascent/descent 不同，属字体度量差异（`RENDER_NOTES.md`：不复刻字体瑕疵）。 |
+
+**当前基线：40 个用例类 / 428 个测试用例，全部通过。**

@@ -63,7 +63,9 @@ public class myEditViewMap extends JPanel implements MouseListener, MouseMotionL
     Rect rtM    = new Rect();  // 人
     Rect rtSize = new Rect();  // 关卡尺寸
 
-    int cur_Obj = 0, obj_Width;  // 当前素材、顶部素材矩形宽
+    int cur_Obj = 0, obj_Width;  // 当前素材、顶部素材矩形宽（dp）
+    /** 原版的 obj_Width，单位是**设备像素**（参考机型恒为 100）—— 只用来算字号。 */
+    int obj_WidthDev = 100;
     char[] m_Objs = {'-', '#', '.', '$', '@'};
 
     private final TouchListener touchListener;
@@ -116,22 +118,38 @@ public class myEditViewMap extends JPanel implements MouseListener, MouseMotionL
         }
     }
 
+    /**
+     * 原版顶栏几何里的裸像素常量 → dp。
+     * 参考机型 1260px 宽 = 370dp，即 1 设备像素 = 0.2937dp（见 {@link myMaps#DENSITY}）。
+     */
+    private static int dp(int devicePx) {
+        return Math.round(devicePx / myMaps.DENSITY);
+    }
+
     private void initView() {
         mMod = MOD_SELECT;
         selNode.row = -1;
 
-        obj_Width = myMaps.m_nWinWidth / 10;
-        if (obj_Width > m_PicWidth * 2) obj_Width = m_PicWidth * 2;
-        if (obj_Width < 30) obj_Width = 30;
-        m_nArenaTop = obj_Width + 2;
+        // 原版顶栏几何写在**设备像素**里（myMaps.m_nWinWidth = metric.widthPixels）：
+        //   obj_Width = min(屏幕宽/10, m_PicWidth*2)
+        // 参考机型 1260px 宽 → 126 → 被 100 夹住。100 设备像素 = 29.36dp → 29dp。
+        // PC 端 m_nWinWidth 是 dp，所以先把屏幕宽折回设备像素再套原式。
+        int screenDev = Math.round(myMaps.m_nWinWidth * myMaps.DENSITY);
+        obj_WidthDev = Math.min(screenDev / 10, m_PicWidth * 2);
+        obj_Width = dp(obj_WidthDev);
+        m_nArenaTop = obj_Width + dp(2);
 
+        // 下面每个 rect 里的裸像素常量（1/2/10/5）原版都是设备像素，一律折成 dp。
         rtTop.set(0, 0, myMaps.m_nWinWidth, m_nArenaTop);
-        rtF.set(1, 1, 1 + obj_Width, obj_Width + 1);
-        rtW.set(obj_Width + 2, 1, (obj_Width + 2) + obj_Width, obj_Width + 1);
-        rtD.set((obj_Width + 2) * 2, 1, (obj_Width + 2) * 2 + obj_Width, obj_Width + 1);
-        rtB.set((obj_Width + 2) * 3, 1, (obj_Width + 2) * 3 + obj_Width, obj_Width + 1);
-        rtM.set((obj_Width + 2) * 4, 1, (obj_Width + 2) * 4 + obj_Width, obj_Width + 1);
-        rtSize.set(rtM.right + 10, 5, myMaps.m_nWinWidth - 5, m_nArenaTop - 5);
+        rtF.set(dp(1), dp(1), dp(1) + obj_Width, obj_Width + dp(1));
+        // ⚠️ 原版这里是 `obj_Width + obj_Width`（少加了一个间隔），墙面素材因此只有 98px 宽、
+        //    比其它 4 个窄 2px —— 截图实测确实是 98px（floor 1..100 / wall 102..199）。
+        //    这是原版的笔误，但按项目约定**照抄**，别「顺手修好」。
+        rtW.set(obj_Width + dp(2), dp(1), obj_Width + obj_Width, obj_Width + dp(1));
+        rtD.set((obj_Width + dp(2)) * 2, dp(1), (obj_Width + dp(2)) * 2 + obj_Width, obj_Width + dp(1));
+        rtB.set((obj_Width + dp(2)) * 3, dp(1), (obj_Width + dp(2)) * 3 + obj_Width, obj_Width + dp(1));
+        rtM.set((obj_Width + dp(2)) * 4, dp(1), (obj_Width + dp(2)) * 4 + obj_Width, obj_Width + dp(1));
+        rtSize.set(rtM.right + dp(10), dp(5), myMaps.m_nWinWidth - dp(5), m_nArenaTop - dp(5));
 
         rtKW.set(0, 0, 50, 50);
         rtKF.set(0, 50 + myMaps.isSkin_200, 50, 100 + myMaps.isSkin_200);
@@ -387,7 +405,7 @@ public class myEditViewMap extends JPanel implements MouseListener, MouseMotionL
         if (m_nArenaTop > 0) {
             int w = getWidth() > 0 ? getWidth() : myMaps.m_nWinWidth;
             rtTop.set(0, 0, w, m_nArenaTop);
-            rtSize.set(rtM.right + 10, 5, w - 5, m_nArenaTop - 5);
+            rtSize.set(rtM.right + dp(10), dp(5), w - dp(5), m_nArenaTop - dp(5));
 
             myPaint.setStyle(Paint.Style.FILL);
             myPaint.setARGB(255, 119, 136, 153);
@@ -402,7 +420,8 @@ public class myEditViewMap extends JPanel implements MouseListener, MouseMotionL
                 canvas.drawBitmap(myMaps.skinBit, rtKM, rtM, myPaint);
 
                 if (mMod == MOD_EDIT) {
-                    rt.set((obj_Width + 2) * cur_Obj, 1, (obj_Width + 2) * cur_Obj + obj_Width, obj_Width + 1);
+                    rt.set((obj_Width + dp(2)) * cur_Obj, dp(1),
+                            (obj_Width + dp(2)) * cur_Obj + obj_Width, obj_Width + dp(1));
                     canvas.drawBitmap(myMaps.skinBit, rtKSel, rt, myPaint);
                 }
             }
@@ -412,7 +431,8 @@ public class myEditViewMap extends JPanel implements MouseListener, MouseMotionL
 
             canvas.drawRect(rtSize, myPaint);
             myPaint.setARGB(255, 255, 255, 255);
-            myPaint.setTextSize(Math.max(12, obj_Width * 2 / 5));
+            // 原版：myPaint.setTextSize(obj_Width * 2/5)，obj_Width 是设备像素 → 40px = 11.75dp
+            myPaint.setTextSize(dp(obj_WidthDev * 2 / 5));
 
             String mStr;
             if (isSize) {

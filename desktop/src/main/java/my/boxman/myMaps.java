@@ -41,6 +41,17 @@ public class myMaps {
 	static int m_nWinWidth;  //屏幕尺寸
 	static int m_nWinHeight;
 
+	/**
+	 * 参考机型密度。原版 {@code BoxMan.onCreate()} 里
+	 * {@code myMaps.m_nWinWidth = metric.widthPixels} 取的是**设备像素**（1260），
+	 * 而 PC 端的 {@code m_nWinWidth} 是 dp（370）—— 1260 / 370 = 3.4051。
+	 *
+	 * <p>凡原版把几何写成「设备像素」（如 {@code myEditViewMap} 顶栏的
+	 * {@code obj_Width = 屏幕宽/10}、{@code +2}、{@code +10}、{@code +5}），
+	 * PC 侧都要除以它折成 dp。
+	 */
+	public static final float DENSITY = 3.4051f;
+
 	static int m_nMaxSteps = 500000;  //保存答案到 DB 步数限制的
 	static int m_nMaxRow = 100;  //地图最大尺寸
 	static int m_nMaxCol = 100;

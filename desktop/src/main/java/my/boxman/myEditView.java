@@ -6,6 +6,7 @@ import my.boxman.compat.HoloConfirmDialog;
 import my.boxman.compat.HoloContent;
 import my.boxman.compat.HoloMessageDialog;
 import my.boxman.compat.HoloPopupMenu;
+import my.boxman.compat.HoloTabBar;
 import my.boxman.compat.HoloViewDialog;
 import my.boxman.compat.android.graphics.Matrix;
 
@@ -203,58 +204,58 @@ public class myEditView extends JFrame {
     }
 
     private JPanel createBottomBar() {
-        JPanel bar = new JPanel(new GridLayout(1, 8, 4, 4));
-        bar.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+        // 原版 edit_view.xml 的 edit_bottom：
+        //   <RadioGroup android:background="#ff778899"> 里放 8 个
+        //   <CheckBox style="@style/tab_style" android:drawableTop="@drawable/xxx" android:text="..."/>
+        // 每个 CheckBox 都是 layout_weight="1.0" → **精确等分整宽**（370/8 = 46.25dp），
+        // 图标 32dp 在上、9dip 文字在下，通体平底 #778899（tab_style 的 button="@null"，
+        // 而 AOSP 的 Widget.CompoundButton 没有 android:background，所以勾选态没有任何视觉反馈）。
+        JPanel bar = HoloTabBar.bar();
 
-        bt_UnDo = new JToggleButton("撤销");
-        bt_UnDo.setEnabled(false);
+        bt_UnDo = newTab("撤销", "unbit2", false);
         bt_UnDo.addActionListener(e -> {
             bt_UnDo.setSelected(false);
             if (!m_UnDoList.isEmpty()) myUnDo();
         });
 
-        bt_ReDo = new JToggleButton("重做");
-        bt_ReDo.setEnabled(false);
+        bt_ReDo = newTab("重做", "rebit2", false);
         bt_ReDo.addActionListener(e -> {
             bt_ReDo.setSelected(false);
             if (!m_ReDoList.isEmpty()) myReDo();
         });
 
-        bt_Cut = new JToggleButton("剪切");
-        bt_Cut.setEnabled(false);
+        bt_Cut = newTab("剪切", "cutbit", false);
         bt_Cut.addActionListener(e -> {
             bt_Cut.setSelected(false);
             doCut();
         });
 
-        bt_Copy = new JToggleButton("复制");
-        bt_Copy.setEnabled(false);
+        bt_Copy = newTab("复制", "copybit", false);
         bt_Copy.addActionListener(e -> {
             bt_Copy.setSelected(false);
             doCopy();
         });
 
-        bt_Paste = new JToggleButton("粘贴");
-        bt_Paste.setEnabled(true);
+        // 原版：bt_Paste.setEnabled(!myMaps.loadClipper().equals(""));  //剪切板中有内容
+        bt_Paste = newTab("粘贴", "pastebit", !loadClipper().equals(""));
         bt_Paste.addActionListener(e -> {
             bt_Paste.setSelected(false);
             doPaste();
         });
 
-        bt_Tru = new JToggleButton("变换");
+        bt_Tru = newTab("变换", "trbtn", true);
         bt_Tru.addActionListener(e -> {
             bt_Tru.setSelected(false);
             showTransformMenu();
         });
 
-        bt_Save = new JToggleButton("保存");
-        bt_Save.setEnabled(false);
+        bt_Save = newTab("保存", "save", false);
         bt_Save.addActionListener(e -> {
             bt_Save.setSelected(false);
             doSave();
         });
 
-        bt_More = new JToggleButton("更多");
+        bt_More = newTab("更多", "chbtn", true);
         bt_More.addActionListener(e -> {
             bt_More.setSelected(false);
             if (!moreLongPressed) openOptionsMenu();   // 长按已经处理过了，别再弹菜单
@@ -272,6 +273,13 @@ public class myEditView extends JFrame {
         bar.add(bt_More);
 
         return bar;
+    }
+
+    /** 底栏按钮 = 原版 {@code <CheckBox style="@style/tab_style" android:drawableTop="...">}。 */
+    private static HoloTabBar.TabButton newTab(String text, String iconRes, boolean enabled) {
+        HoloTabBar.TabButton b = new HoloTabBar.TabButton(text, HoloTabBar.icon(iconRes));
+        b.setEnabled(enabled);
+        return b;
     }
 
     /**
@@ -619,6 +627,7 @@ public class myEditView extends JFrame {
         m_ReDoList.clear();
         bt_ReDo.setEnabled(false);
         bt_Save.setEnabled(true);
+        bt_Paste.setEnabled(true);   // 原版：剪切后「粘贴」可用
         mMap.repaint();
     }
 
@@ -635,6 +644,7 @@ public class myEditView extends JFrame {
             if (i < selRows - 1) str.append('\n');
         }
         saveClipper(str.toString());
+        bt_Paste.setEnabled(true);   // 原版：复制后「粘贴」可用
     }
 
     private void doPaste() {
