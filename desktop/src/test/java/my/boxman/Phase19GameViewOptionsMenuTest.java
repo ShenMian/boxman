@@ -38,8 +38,12 @@ import static org.junit.Assert.assertTrue;
  * ② 只有 8 项，缺 {@code 导出...} / {@code 导入...} / {@code YASS求解} / {@code 打开状态...} / {@code 操作说明}；
  * ③ {@code 关于} 弹的是自造的 {@code JOptionPane}，而原版是 {@code myAbout2}（关卡描述）。
  *
- * <p>本次把菜单换成 {@link HoloPopupMenu}，并回补除 {@code YASS求解}（需外部求解器，阶段 F）
- * 之外的全部条目，顺序严格按 {@code player.xml}。
+ * <p>本次把菜单换成 {@link HoloPopupMenu}，并回补全部条目，顺序严格按 {@code player.xml}。
+ *
+ * <p>{@code YASS求解}（阶段 F）也已在菜单里接上：原版那一步是 Android 的<b>跨应用 Intent</b>
+ * （{@code ComponentName("net.sourceforge.sokobanyasc.joriswit.yass", "yass.YASSActivity")}，
+ * {@code action = "nl.joriswit.sokosolver.SOLVE"}），PC 没有等价机制 —— 等价于真机未装求解器，
+ * 所以 {@code mySolution()} 落到与真机相同的 catch 分支。菜单条目本身照原版存在、可点。
  *
  * <p><b>用例不许弹模态框</b>：{@code onReStart()} / {@code onImport()} / {@code onOpenState2()} /
  * {@code onExport()} 都会开窗（{@code myActGMView} 还是模态），所以只测「已拆出来的纯逻辑」，
@@ -57,9 +61,6 @@ public class Phase19GameViewOptionsMenuTest {
             "导出...", "导入...", "YASS求解", "打开状态...", "保存状态",
             "关于", "操作说明", "退出",
     };
-
-    /** 阶段 F 才能补的一项（外部 YASS 求解器未接入）。 */
-    private static final String NOT_YET_PORTED = "YASS求解";
 
     /** 一个合法的小关卡：3 行 × 5 列，1 个仓管员、1 箱 1 目标。 */
     private static final String LEVEL = "#####\n#@$.#\n#####";
@@ -135,7 +136,7 @@ public class Phase19GameViewOptionsMenuTest {
     }
 
     @Test
-    public void testOptionsMenuCoversEveryPlayerXmlItemExceptYass() {
+    public void testOptionsMenuCoversEveryPlayerXmlItem() {
         List<String> xml = readPlayerXmlTitles();
         assertEquals("player.xml 未被注释的项应为 13", PLAYER_XML.length, xml.size());
         assertEquals("player.xml 解析结果与常量不符（XML 改了？）",
@@ -146,15 +147,13 @@ public class Phase19GameViewOptionsMenuTest {
         for (String t : xml) {
             if (!pc.contains(t)) missing.add(t);
         }
-        assertEquals("阶段 D-3 之后，player.xml 只应剩 YASS求解 未接（阶段 F）",
-                "[" + NOT_YET_PORTED + "]", missing.toString());
+        assertEquals("阶段 F 之后，player.xml 的 13 项应全部落地", "[]", missing.toString());
     }
 
     @Test
     public void testOptionsMenuOrderFollowsPlayerXml() {
         List<String> expected = new ArrayList<>(readPlayerXmlTitles());
-        expected.remove(NOT_YET_PORTED);   // 阶段 F 补
-        assertEquals("菜单顺序必须与 player.xml 一致（去掉未接的 YASS求解）",
+        assertEquals("菜单顺序必须与 player.xml 一致",
                 expected.toString(), win.optionsMenuTitlesForTest().toString());
     }
 
@@ -262,7 +261,66 @@ public class Phase19GameViewOptionsMenuTest {
                 "l\n[3,6]r", lurd);
     }
 
+    // ---------------------------------------------------------------- YASS求解（阶段 F）
+
+    /**
+     * 原版 {@code player_Yass_Solver}：正推时调 {@code mySolution(0)}。
+     *
+     * <p>PC 上 {@code mySolution()} 的<b>前半段（自动保存当前状态）是真逻辑</b>，照原版完整保留；
+     * 后半段是跨应用 Intent，PC 无等价机制 → 落到与真机未装求解器相同的 catch 分支。
+     * 本用例是「没有动作、{@code m_iStep} 全 0」的空局，保存段被跳过，直接落到 Toast。
+     */
+    @Test
+    public void testYassSolverInForwardModeReportsMissingSolver() {
+        assertFalse("新建窗口应处于正推（bt_BK 未选中）", win.bt_BK.isChecked());
+
+        clickRow(win.optionsMenuForTest(), "YASS求解");
+        drainEdt();
+
+        assertEquals("PC 无 YASS 求解器 → 与真机未安装同一条提示",
+                "没有找到求解器！", MyToast.currentToastText());
+    }
+
+    /** 原版：逆推（{@code bt_BK} 选中）时不给求解，直接提示。 */
+    @Test
+    public void testYassSolverInBackwardModeIsRejected() {
+        win.bt_BK.setChecked(true);
+        drainEdt();
+        MyToast.dismiss();   // 切逆推自身可能弹「需要给出仓管员的位置！」，先清掉
+
+        clickRow(win.optionsMenuForTest(), "YASS求解");
+        drainEdt();
+
+        assertEquals("原版逆推时不给求解", "逆推时，无此功能！", MyToast.currentToastText());
+    }
+
     // ---------------------------------------------------------------- 辅助
+
+    /** 模拟点击弹出菜单里的某一项（{@code Row.mouseClicked} 的等价触发）。 */
+    private static void clickRow(JPopupMenu menu, String title) {
+        for (Component c : menu.getComponents()) {
+            if (c instanceof HoloPopupMenu.Row && title.equals(((HoloPopupMenu.Row) c).getText())) {
+                c.dispatchEvent(new java.awt.event.MouseEvent(c,
+                        java.awt.event.MouseEvent.MOUSE_CLICKED,
+                        System.currentTimeMillis(), 0, 5, 5, 1, false,
+                        java.awt.event.MouseEvent.BUTTON1));
+                return;
+            }
+        }
+        throw new AssertionError("菜单里找不到条目: " + title);
+    }
+
+    /**
+     * 排空 EDT：{@code MyToast.showToast} 在非 EDT 线程上是 {@code invokeLater}，
+     * 不等它跑完就读 {@code currentToastText()}，拿到的是上一条。
+     */
+    private static void drainEdt() {
+        try {
+            SwingUtilities.invokeAndWait(() -> { });
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
+    }
 
     private static int countDisabled(JPopupMenu menu) {
         int n = 0;

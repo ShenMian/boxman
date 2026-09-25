@@ -3121,7 +3121,8 @@ public class myGameView extends JFrame {
      * <p>条目顺序严格按 {@code player.xml}：设置… / 开关选项… / 重新开始 / 退至首 / 进至尾 /
      * 导出… / 导入… / YASS求解 / 打开状态… / 保存状态 / 关于 / 操作说明 / 退出。
      * （{@code player.xml} 里「Solver求解」整段被 {@code <!-- -->} 注释掉，原版不存在。）
-     * 唯一未接的「YASS求解」需要外部求解器，属阶段 F。
+     * {@code YASS求解} 已接（阶段 F）：原版那一步是跨应用 Intent，PC 无等价机制，
+     * 等价于真机未装求解器 —— 见 {@link #onYassSolver()}。
      */
     public void openOptionsMenu() {
         JPopupMenu menu = HoloPopupMenu.create();
@@ -3133,7 +3134,7 @@ public class myGameView extends JFrame {
         HoloPopupMenu.addItem(menu, "进至尾", this::onEnd);
         HoloPopupMenu.addItem(menu, "导出...", this::onExport);
         HoloPopupMenu.addItem(menu, "导入...", this::onImport);
-        // player_Yass_Solver「YASS求解」：需要外部 YASS 求解器（ProcessBuilder），阶段 F。
+        HoloPopupMenu.addItem(menu, "YASS求解", this::onYassSolver);
         HoloPopupMenu.addItem(menu, "打开状态...", this::onOpenState);
         HoloPopupMenu.addItem(menu, "保存状态", this::onSaveState);
         // 原版 player_about → myAbout2（关卡描述），不是 myAbout。
@@ -3225,6 +3226,118 @@ public class myGameView extends JFrame {
                 saveAns(0);
         } else {
             MyToast.showToast(this, "没什么可保存的！", MyToast.LENGTH_SHORT);
+        }
+    }
+
+    /**
+     * 原版 {@code R.id.player_Yass_Solver}「YASS求解」。
+     * 逆推时没有此功能（原版 {@code mySolution()} 只接正推现场）。
+     */
+    void onYassSolver() {
+        if (!bt_BK.isChecked()) {
+            mySolution(0);   // YASS求解
+        } else {
+            MyToast.showToast(this, "逆推时，无此功能！", MyToast.LENGTH_SHORT);
+        }
+    }
+
+    /**
+     * 原版 {@code myGameView.mySolution(int XYZ)}：先把当前状态自动存一次（自动查重），
+     * 再 {@code startActivityForResult()} 把 {@code LEVEL} 交给第三方「YASS」求解器。
+     *
+     * <p><b>PC 上的落地方式</b>：原版这最后一步是 Android 的<b>跨应用 Intent</b> ——
+     * {@code ComponentName("net.sourceforge.sokobanyasc.joriswit.yass", "yass.YASSActivity")}、
+     * {@code action = "nl.joriswit.sokosolver.SOLVE"}、{@code extra = "LEVEL"}。
+     * PC 没有等价的跨应用机制，等价于「设备上没装求解器」，所以这里直接抛出、
+     * 落到与真机相同的 catch 分支：Toast「没有找到求解器！」。
+     * <b>前面那段「自动保存状态」是真逻辑，照原版完整保留。</b>
+     *
+     * <p>求解成功后答案回流的路径见 {@link #onSolverResult(String, boolean)}。
+     *
+     * @param XYZ 0 = YASS 求解；1 = Festival 求解（原版该分支已被注释掉，PC 不接）
+     */
+    void mySolution(int XYZ) {
+        try {
+            // 拼接正逆推动作，进行查重和保存
+            char[] Move = {'l', 'u', 'r', 'd', 'L', 'U', 'R', 'D'};
+            StringBuilder s1 = new StringBuilder();
+            StringBuilder s2 = new StringBuilder();
+            if (!m_lstMovUnDo.isEmpty()) {
+                for (Byte t : m_lstMovUnDo) {
+                    s1.append(Move[t - 1]);
+                }
+            }
+            if (!m_lstMovUnDo2.isEmpty()) {
+                s2.append("[").append(m_nRow0).append(", ").append(m_nCol0).append("]");
+                for (Byte t : m_lstMovUnDo2) {
+                    s2.append(Move[t - 1]);
+                }
+            }
+
+            // 自动保存一下当前状态（自动查重），避免 yass 闪退造成丢失
+            if ((m_iStep[1] > 0 || m_iStep[3] > 0)
+                    && mySQLite.m_SQL.count_S(myMaps.curMap.Level_id, m_iStep[1], m_iStep[0],
+                    m_iStep[3], m_iStep[2], m_nRow0, m_nCol0,
+                    myMaps.getCRC32(s1.toString() + s2.toString())) <= 0) {
+                if (m_imPort_YASS != null && m_imPort_YASS.toLowerCase().indexOf("yass") >= 0) {
+                    m_imPort_YASS = "[YASS]" + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+                } else if (m_imPort_YASS != null && m_imPort_YASS.toLowerCase().indexOf("导入") >= 0) {
+                    m_imPort_YASS = "[导入]" + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+                } else {
+                    m_imPort_YASS = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+                }
+
+                long hh = mySQLite.m_SQL.add_S(myMaps.curMap.Level_id,
+                        3,
+                        m_iStep[1],
+                        m_iStep[0],
+                        m_iStep[3],
+                        m_iStep[2],
+                        m_nRow0,
+                        m_nCol0,
+                        s1.toString(),
+                        s2.toString(),
+                        myMaps.curMap.key,
+                        -1,
+                        "",
+                        m_imPort_YASS);
+
+                m_bMoved = false;
+                if (hh > 0) {
+                    MyToast.showToast(this, "状态已保存！", MyToast.LENGTH_SHORT);
+                }
+            }
+
+            // 原版：new Intent(ACTION_MAIN) + addCategory(CATEGORY_LAUNCHER)
+            //       + setComponent(YASS 的 Activity) + setAction("nl.joriswit.sokosolver.SOLVE")
+            //       + putExtra("LEVEL", myMaps.getLocale(m_cArray))
+            //       + startActivityForResult(intent3, 1)
+            // PC 无跨应用 Intent → 恒抛，等价于真机未安装 YASS。
+            throw new UnsupportedOperationException(
+                    "PC 上没有 YASS 求解器（原版是跨应用 Intent，非外部进程）");
+        } catch (Exception e) {
+            MyToast.showToast(this, "没有找到求解器！", MyToast.LENGTH_SHORT);
+        }
+    }
+
+    /**
+     * 原版 {@code myGameView.onActivityResult(requestCode == 1, ...)} 的等价物：
+     * 求解器把答案放在 {@code extra "SOLUTION"} 里回传。
+     *
+     * <p>PC 上目前没有求解器会回调到这里，但这条回路按原版语义保留：
+     * 成功 → {@code formatPath(solution, false)} + Toast「答案已经载！」+ {@code m_imPort_YASS = "[YASS]"}；
+     * 失败 → Toast「未能完成求解！」。
+     *
+     * @param solution 求解器回传的动作串（{@code RESULT_OK} 时才有意义）
+     * @param ok       {@code resultCode == RESULT_OK}
+     */
+    void onSolverResult(String solution, boolean ok) {
+        if (ok) {
+            formatPath(solution, false);
+            MyToast.showToast(this, "答案已经载！", MyToast.LENGTH_SHORT);
+            m_imPort_YASS = "[YASS]";
+        } else {
+            MyToast.showToast(this, "未能完成求解！", MyToast.LENGTH_SHORT);
         }
     }
 

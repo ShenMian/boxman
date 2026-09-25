@@ -90,6 +90,32 @@ public class myEditViewMap extends JPanel implements MouseListener, MouseMotionL
         this.m_Edit = v;
     }
 
+    /**
+     * 原版 {@code myEditViewMap.mySolution()}：自动求解（长按顶部「仓管员」素材触发）。
+     *
+     * <p>原版把 {@code myMaps.curMap.Map} 交给第三方「YASS」求解器：Android 的<b>跨应用 Intent</b>
+     * （{@code ComponentName("net.sourceforge.sokobanyasc.joriswit.yass", "yass.YASSActivity")}，
+     * {@code action = "nl.joriswit.sokosolver.SOLVE"}，{@code extra = "LEVEL"}），
+     * 由 {@code m_Edit.startActivityForResult(intent3, 1)} 发起，答案回流见
+     * {@code myEditView.onActivityResult}。
+     *
+     * <p>PC 没有等价的跨应用机制 —— 等价于真机未安装求解器，所以这里恒抛，
+     * 落到与真机相同的 catch 分支：Toast「没有找到求解器！」。
+     */
+    protected void mySolution() {
+        try {
+            // 原版：
+            //   new Intent(ACTION_MAIN) + addCategory(CATEGORY_LAUNCHER)
+            //   + setComponent(YASS 的 Activity) + setAction("nl.joriswit.sokosolver.SOLVE")
+            //   + putExtra("LEVEL", myMaps.curMap.Map)
+            //   + m_Edit.startActivityForResult(intent3, 1)
+            throw new UnsupportedOperationException(
+                    "PC 上没有 YASS 求解器（原版是跨应用 Intent，非外部进程）");
+        } catch (Exception e) {
+            MyToast.showToast(myMaps.ctxDealFile, "没有找到求解器！", MyToast.LENGTH_SHORT);
+        }
+    }
+
     private void initView() {
         mMod = MOD_SELECT;
         selNode.row = -1;
@@ -583,16 +609,40 @@ public class myEditViewMap extends JPanel implements MouseListener, MouseMotionL
         }
 
         public void onLongPress(int x, int y) {
-            if (y < m_nArenaTop) {
-                if (rtSize.contains(x, y)) {
-                    mMod = MOD_SELECT;
-                    mySelectAll();
-                }
+            if (rtM.contains(x, y)) {  // 长按仓管员素材，自动求解一下下，方便摆箱子方式求解者
+                if (m_Edit.Normalize2(m_Edit.m_cArray)) mySolution();
             } else {
-                isSize = false;
-                doACT(x, y, false, true);
+                if (y < m_nArenaTop) {
+                    // 块编辑模式，长按素材
+                    if (mMod == MOD_SELECT) {
+                        int old_obj = cur_Obj;
+                        cur_Obj = -1;
+                        if (rtF.contains(x, y)) {
+                            cur_Obj = 0;  // 地板
+                        } else if (rtW.contains(x, y)) {
+                            cur_Obj = 1;  // 素材--墙壁
+                        } else if (rtD.contains(x, y)) {
+                            cur_Obj = 2;  // 素材--目标
+                        } else if (rtB.contains(x, y)) {
+                            cur_Obj = 3;  // 素材--箱子
+                        }
+                        // 不能用仓管员填充，没有选区不能填充
+                        if (cur_Obj >= 0 && cur_Obj < 4 && selNode.row >= 0
+                                && (selNode.row != selNode2.row || selNode.col != selNode2.col)) {
+                            m_Edit.DoAct(0);  // 填充区域或区域勾边
+                        }
+                        if (cur_Obj < 0) cur_Obj = old_obj;
+                    }
+                    if (rtSize.contains(x, y)) {  // 尺寸--以最小的矩形区域选择地图中的全部素材（地板除外）
+                        mMod = MOD_SELECT;
+                        mySelectAll();
+                    }
+                } else {
+                    isSize = false;  // 长按地图区域，右上角显示游标
+                    doACT(x, y, false, true);  // 仅计算游标
+                }
+                repaint();
             }
-            repaint();
         }
 
         public void applyZoom(float factor, int cx, int cy) {

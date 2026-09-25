@@ -37,6 +37,12 @@ import static org.junit.Assert.assertTrue;
  * {@code 导入(XSB 或 Lurd)}（含 {@code LurdToXSB} 逆推）、
  * {@code 提交} / {@code 试推} / {@code 关卡标准化} 按原版逻辑重写。
  *
+ * <p>后又补了 {@code myEditViewMap.onLongPress} 的两段分支
+ * （长按顶部「仓管员」素材 → {@code Normalize2} + 自动求解；长按素材 → 填充/勾边），
+ * 以及它们依赖的 {@code myEditView.DoAct(0)}（原版会弹「请选择：填充 / 勾边」模态框，
+ * 模态部分留在 {@code DoAct(0)} 里，实际填充/勾边拆成 {@code fillSelection()} /
+ * {@code outlineSelection()} 供用例直接调）。
+ *
  * <p><b>用例不许弹模态框</b>：确认框、剪切板框、设置框都是模态 {@code JDialog}，
  * 弹出来会挂死 EDT。所以只测「纯逻辑 + 已拆出来的动作方法」，
  * 并用 {@code @Rule Timeout} 兜底，把「挂住」变成「失败」。
@@ -65,6 +71,11 @@ public class Phase17EditViewTest {
     public static void setUpClass() {
         myMaps.sRoot = System.getProperty("user.dir") + "/build/ui-snapshot/edit-home";
         myMaps.sPath = "/";
+        // ⚠️ 必须显式给窗口尺寸：myEditViewMap.initView() 用它算顶部素材条的矩形
+        //    （rtF/rtW/rtD/rtB/rtM/rtSize）。默认 0 时 obj_Width 会被夹到 30，
+        //    而 rtSize 的右边界 = m_nWinWidth - 5 会变成 -5 → 整个矩形退化，长按用例全假过。
+        myMaps.m_nWinWidth = my.boxman.compat.UiWindow.PHONE_WIDTH;
+        myMaps.m_nWinHeight = my.boxman.compat.UiWindow.PHONE_HEIGHT;
         new File(myMaps.sRoot + myMaps.sPath + "创编关卡/").mkdirs();
         new File(myMaps.sRoot + myMaps.sPath + "宏/").mkdirs();
         mySQLite sql = mySQLite.getInstance();
@@ -300,7 +311,169 @@ public class Phase17EditViewTest {
         assertNotNull("原版 onCreate 里就建好了 exitDlg", win.getExitDialogForTest());
     }
 
+    // ---------------------------------------------------------------- 长按（onLongPress）
+
+    /**
+     * 原版 {@code myEditViewMap.onLongPress}：长按顶部「仓管员」素材 → 先 {@code Normalize2}，
+     * 成功才自动求解。PC 无跨应用 YASS 求解器，所以落到「没有找到求解器！」。
+     *
+     * <p>改写前 PC 的 {@code onLongPress} 只有 {@code y < m_nArenaTop} 与 {@code else} 两个分支，
+     * 既没有 {@code rtM} 这个前置判断，也没有「长按素材填充选区」那一段。
+     */
+    @Test
+    public void testLongPressOnWorkerSwatchTriesAutoSolve() {
+        assertTrue("前置：合法关卡应能标准化", win.Normalize2(win.m_cArray));
+
+        longPress(win.mMap, centerX(win.mMap.rtM), centerY(win.mMap.rtM));
+        drainEdt();
+
+        assertEquals("PC 无 YASS 求解器 → 与真机未安装同一条提示",
+                "没有找到求解器！", MyToast.currentToastText());
+    }
+
+    /**
+     * {@code Normalize2} 失败时不应发起求解。
+     *
+     * <p>⚠️ 不能真造一个非法地图去跑 {@code Normalize2}：它的两条失败路径都会弹
+     * <b>模态</b> {@code HoloMessageDialog}（「仓管员数目不正确！」/「箱子或目标数不正确！」），
+     * 用例会直接挂死。所以这里用一个「{@code Normalize2} 恒失败」的编辑器替身来验闸门。
+     */
+    @Test
+    public void testLongPressOnWorkerSwatchSkipsSolveWhenNormalizeFails() {
+        myEditView failing = new myEditView() {
+            @Override
+            boolean Normalize2(char[][] mLevel) {
+                return false;
+            }
+        };
+        try {
+            String sentinel = showSentinel(failing);
+            longPress(failing.mMap, centerX(failing.mMap.rtM), centerY(failing.mMap.rtM));
+            drainEdt();
+
+            assertEquals("标准化失败时不该弹求解提示", sentinel, MyToast.currentToastText());
+        } finally {
+            failing.dispose();
+        }
+    }
+
+    /** 长按地板素材（不是仓管员）不应触发求解。 */
+    @Test
+    public void testLongPressOnFloorSwatchDoesNotSolve() {
+        win.mMap.mMod = myEditViewMap.MOD_SELECT;
+        win.mMap.selNode.row = -1;   // 没有选区 → 填充分支也不动
+
+        String sentinel = showSentinel(win);
+        longPress(win.mMap, centerX(win.mMap.rtF), centerY(win.mMap.rtF));
+        drainEdt();
+
+        assertEquals("长按地板素材不该触发求解", sentinel, MyToast.currentToastText());
+    }
+
+    /** 长按右上角「尺寸」区域：切到选择模式并选中全部素材。 */
+    @Test
+    public void testLongPressOnSizeAreaSwitchesToSelectMode() {
+        win.mMap.mMod = myEditViewMap.MOD_EDIT;
+        win.mMap.selNode.row = -1;
+
+        longPress(win.mMap, centerX(win.mMap.rtSize), centerY(win.mMap.rtSize));
+        drainEdt();
+
+        assertEquals("应切到选择模式", myEditViewMap.MOD_SELECT, win.mMap.mMod);
+        assertTrue("应已选中全部素材（selNode 不再是 -1）", win.mMap.selNode.row >= 0);
+    }
+
+    // ---------------------------------------------------------------- 填充 / 勾边（DoAct(0)）
+
+    /** {@code DoAct(0)} 的「填充」分支：选区整块刷成当前素材。 */
+    @Test
+    public void testFillSelectionPaintsWholeSelection() {
+        select(0, 0, 1, 1);
+        win.mMap.cur_Obj = 1;          // 素材--墙壁 '#'
+        win.fillSelection();
+
+        for (int i = 0; i <= 1; i++) {
+            for (int j = 0; j <= 1; j++) {
+                assertEquals("选区内 (" + i + "," + j + ") 应被刷成墙壁",
+                        '#', win.m_cArray[win.mMap.m_nMapTop + i][win.mMap.m_nMapLeft + j]);
+            }
+        }
+    }
+
+    /** {@code DoAct(0)} 的「勾边」分支：只画四条边，中间不动。 */
+    @Test
+    public void testOutlineSelectionPaintsOnlyTheBorder() {
+        select(0, 0, 2, 2);
+        int top = win.mMap.m_nMapTop, left = win.mMap.m_nMapLeft;
+
+        // 先把 3×3 全刷成地板，方便分辨「边」与「中间」
+        for (int i = 0; i <= 2; i++) {
+            for (int j = 0; j <= 2; j++) win.m_cArray[top + i][left + j] = '-';
+        }
+
+        win.mMap.cur_Obj = 1;          // 素材--墙壁 '#'
+        win.outlineSelection();
+
+        assertEquals("上边应被画", '#', win.m_cArray[top][left + 1]);
+        assertEquals("下边应被画", '#', win.m_cArray[top + 2][left + 1]);
+        assertEquals("左边应被画", '#', win.m_cArray[top + 1][left]);
+        assertEquals("右边应被画", '#', win.m_cArray[top + 1][left + 2]);
+        assertEquals("四个角也应被画", '#', win.m_cArray[top][left]);
+        assertEquals("中间不该被动", '-', win.m_cArray[top + 1][left + 1]);
+    }
+
+    /** 勾边的「箱子落到目标上」规则：{@code $} 画到 {@code .} 上要变 {@code *}。 */
+    @Test
+    public void testOutlineSelectionMergesBoxOntoGoal() {
+        select(0, 0, 2, 2);
+        int top = win.mMap.m_nMapTop, left = win.mMap.m_nMapLeft;
+        for (int i = 0; i <= 2; i++) {
+            for (int j = 0; j <= 2; j++) win.m_cArray[top + i][left + j] = '-';
+        }
+        win.m_cArray[top][left + 1] = '.';   // 上边正中先放个目标
+
+        win.mMap.cur_Obj = 3;                // 素材--箱子 '$'
+        win.outlineSelection();
+
+        assertEquals("箱子画到目标上应变 '*'", '*', win.m_cArray[top][left + 1]);
+        assertEquals("纯空地上应直接是箱子", '$', win.m_cArray[top + 2][left + 1]);
+    }
+
     // ---------------------------------------------------------------- 辅助
+
+    /** 在 {@code myEditViewMap} 上模拟一次右键长按（PC 把 Android 的长按映射到右键）。 */
+    private static void longPress(myEditViewMap map, int x, int y) {
+        map.mousePressed(new java.awt.event.MouseEvent(map,
+                java.awt.event.MouseEvent.MOUSE_PRESSED, System.currentTimeMillis(), 0,
+                x, y, 1, true, java.awt.event.MouseEvent.BUTTON3));
+    }
+
+    private static int centerX(my.boxman.compat.android.graphics.Rect r) {
+        return (r.left + r.right) / 2;
+    }
+
+    private static int centerY(my.boxman.compat.android.graphics.Rect r) {
+        return (r.top + r.bottom) / 2;
+    }
+
+    /** 设置选区（坐标相对关卡左上角，与 {@code myEditViewMap.selNode} 语义一致）。 */
+    private void select(int r1, int c1, int r2, int c2) {
+        win.mMap.mMod = myEditViewMap.MOD_SELECT;
+        win.mMap.selNode.row = r1;
+        win.mMap.selNode.col = c1;
+        win.mMap.selNode2.row = r2;
+        win.mMap.selNode2.col = c2;
+    }
+
+    /**
+     * 先弹一条哨兵提示再排空 EDT，用于「不该有新提示」的断言。
+     * （{@code MyToast.currentToastText()} 收起后仍保留旧文字，不能靠 null 判断。）
+     */
+    private static String showSentinel(java.awt.Component ctx) {
+        MyToast.showToast(ctx, "哨兵", MyToast.LENGTH_SHORT);
+        drainEdt();
+        return MyToast.currentToastText();
+    }
 
     /** 排空 EDT —— {@code MyToast.showToast} 在非 EDT 线程上是 {@code invokeLater}。 */
     private static void drainEdt() {

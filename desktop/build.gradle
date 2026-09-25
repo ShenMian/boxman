@@ -43,4 +43,68 @@ tasks.register('fatJar', Jar) {
     with jar
 }
 
+// PORTING.md §7.3「打包分发」：用 jpackage 打成原生应用镜像 / 安装包。
+//   默认 app-image（只需要 JDK，不依赖外部工具链）；
+//   Windows 上要 msi 需先装 WiX Toolset，再 ./gradlew packageApp -PjpackageType=msi
+//   macOS: -PjpackageType=dmg      Linux: -PjpackageType=deb
+//
+// ⚠️ 两个实测坑（JDK 26 / Windows）：
+//   ① `--name` 必须是 ASCII。jpackage 生成的原生 launcher 用 ANSI API 定位自带 runtime，
+//      安装目录名含中文时启动直接报 "could not find java.dll / Could not find Java SE
+//      Runtime Environment"（已实测：ASCII 名+ASCII 目录正常，中文目录必挂）。
+//      用户可见的窗口标题仍是「推箱快手」（`BoxManPC.setTitle`），不受影响。
+//   ② `--name` 是中文时若直接从 shell 传参，Windows 控制台代码页会把它转成 "????"，
+//      jpackage 报 "Invalid Application name"。所以这里统一走 @argfile（jpackage 自己按 UTF-8 读）。
+tasks.register('packageApp', Exec) {
+    group = 'distribution'
+    description = 'PORTING.md 7.3：jpackage 打包（默认 app-image，可用 -PjpackageType= 换安装包格式）'
+
+    dependsOn fatJar
+
+    def appName = 'BoxManPC'
+    def inputDir = layout.buildDirectory.dir('jpackage-input')
+    def destDir = layout.buildDirectory.dir('jpackage')
+    def iconFile = file('src/main/resources/drawable/icon.ico')
+    def pkgType = providers.gradleProperty('jpackageType').orElse('app-image')
+
+    // @argfile 的路径本身也要保持 ASCII，见上面 ②。
+    def argFile = layout.buildDirectory.file('jpackage-args.txt')
+
+    doFirst {
+        def inDir = inputDir.get().asFile
+        delete inDir
+        inDir.mkdirs()
+        copy {
+            from fatJar.archiveFile
+            into inDir
+        }
+
+        def dest = destDir.get().asFile
+        delete dest
+        dest.mkdirs()
+
+        def args = [
+                '--input', inDir.absolutePath,
+                '--main-jar', fatJar.archiveFile.get().asFile.name,
+                '--main-class', 'my.boxman.BoxManPC',
+                '--name', appName,
+                '--dest', dest.absolutePath,
+                '--type', pkgType.get(),
+                '--app-version', '1.0',
+                // 安装包元数据里保留原版身份（窗口标题已由 setTitle 设为「推箱快手」）
+                '--description', '推箱快手 PC 版',
+                '--vendor', 'sokoban.cn',
+        ]
+        if (iconFile.isFile()) {
+            // jpackage 在 Windows 上只认 .ico（给 .png 会警告并退回默认图标）。
+            args += ['--icon', iconFile.absolutePath]
+        }
+        // ⚠️ jpackage 的 @argfile 按空白切词（不认「一行一个参数」），含空格的值必须加引号，
+        //    否则会多出「非选项参数」→ "Found N non-option arguments on the command line"。
+        argFile.get().asFile.setText(args.collect { it.contains(' ') ? "\"$it\"" : it }.join('\n'), 'UTF-8')
+    }
+
+    commandLine 'jpackage', "@${argFile.get().asFile.absolutePath}"
+}
+
 

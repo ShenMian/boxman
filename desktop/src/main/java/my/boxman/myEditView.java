@@ -365,15 +365,89 @@ public class myEditView extends JFrame {
         return " [箱:" + boxes + " 标:" + goals + "]";
     }
 
+    //从 myEditViewMap 传来的调用
     public void DoAct(int act) {
-        ndAct = new ActNode(m_cArray, mMap.m_nMapLeft, mMap.m_nMapRight, mMap.m_nMapTop, mMap.m_nMapBottom,
-                mMap.m_iR, mMap.m_iC, null, null, null, null);
-        ndAct.Act(act);
-        m_UnDoList.offer(ndAct);
-        bt_UnDo.setEnabled(true);
-        m_ReDoList.clear();
-        bt_ReDo.setEnabled(false);
-        bt_Save.setEnabled(true);
+        //动作入 UnDo 栈
+        //  0: 填充区域或区域勾边
+        //  3: 单点绘制
+        //  6: 连续绘制
+        ActNode nd;
+        if (act == 0) {
+            // 原版：先建 ActNode（含选区），再弹「请选择：填充 / 勾边」（默认「填充」）。
+            // ⚠️ PC 的 ActNode 构造器会把地图**拷贝**一份，所以这份快照是「填充前」的，
+            //    undo 能正确还原；原版存的是 m_cArray 引用 + 之后 getMap() 序列化。
+            nd = new ActNode(m_cArray, mMap.m_nMapLeft, mMap.m_nMapRight, mMap.m_nMapTop, mMap.m_nMapBottom,
+                    -1, -1, null, null, mMap.selNode, mMap.selNode2);
+            m_nItemSelect = 0;
+            HoloChoiceDialog.selectThenOk(this, "请选择", null, new String[]{"填充", "勾边"}, 0,
+                    which -> {
+                        m_nItemSelect = which;
+                        if (which == 0) fillSelection();
+                        else outlineSelection();
+                        mMap.repaint();
+                    }).setVisible(true);
+        } else
+            nd = new ActNode(m_cArray, mMap.m_nMapLeft, mMap.m_nMapRight, mMap.m_nMapTop, mMap.m_nMapBottom,
+                    mMap.m_iR, mMap.m_iC, null, null, null, null);
+        nd.Act(act);
+        ndAct = nd;
+        pushUndo();
+    }
+
+    /**
+     * 原版 {@code DoAct(0)} 里反复内联的那段「把素材 {@code obj} 画到 {@code (r,c)}」开关。
+     *
+     * <p>规则照抄原版：{@code $} 落到 {@code .} / {@code +} / {@code *} 上会变 {@code *}，
+     * {@code .} 落到 {@code $} / {@code *} 上会变 {@code *}、落到 {@code @} / {@code +} 上会变 {@code +}；
+     * 其余素材（{@code -} / {@code #}）直接覆盖。
+     */
+    private void paintCell(int r, int c, char obj) {
+        switch (obj) {
+            case '.':
+                if (m_cArray[r][c] == '$' || m_cArray[r][c] == '*') m_cArray[r][c] = '*';
+                else if (m_cArray[r][c] == '@' || m_cArray[r][c] == '+') m_cArray[r][c] = '+';
+                else m_cArray[r][c] = '.';
+                break;
+            case '$':
+                if (m_cArray[r][c] == '.' || m_cArray[r][c] == '+' || m_cArray[r][c] == '*')
+                    m_cArray[r][c] = '*';
+                else m_cArray[r][c] = '$';
+                break;
+            default:
+                m_cArray[r][c] = obj;
+                break;
+        }
+    }
+
+    /**
+     * 「填充」分支：把整个选区刷成当前素材（{@code mMap.cur_Obj}）。
+     * 已从 {@link #DoAct(int)} 拆出来，便于测试直接调用（{@code DoAct(0)} 会弹模态框）。
+     */
+    void fillSelection() {
+        char obj = mMap.m_Objs[mMap.cur_Obj];
+        for (int i = mMap.selNode.row; i <= mMap.selNode2.row; i++) {
+            for (int j = mMap.selNode.col; j <= mMap.selNode2.col; j++) {
+                paintCell(i + mMap.m_nMapTop, j + mMap.m_nMapLeft, obj);
+            }
+        }
+    }
+
+    /**
+     * 「勾边」分支：只画选区的四条边 —— 上下两行通画，左右两列只画中间那段。
+     * 同上，从 {@link #DoAct(int)} 拆出来给测试用。
+     */
+    void outlineSelection() {
+        char obj = mMap.m_Objs[mMap.cur_Obj];
+        int r1 = mMap.selNode.row, r2 = mMap.selNode2.row;
+        int c1 = mMap.selNode.col, c2 = mMap.selNode2.col;
+        for (int j = c1; j <= c2; j++) {
+            paintCell(r1 + mMap.m_nMapTop, j + mMap.m_nMapLeft, obj);
+            paintCell(r2 + mMap.m_nMapTop, j + mMap.m_nMapLeft, obj);
+        }
+        for (int i = r1 + 1; i < r2; i++) {
+            paintCell(i + mMap.m_nMapTop, c1 + mMap.m_nMapLeft, obj);
+            paintCell(i + mMap.m_nMapTop, c2 + mMap.m_nMapLeft, obj);
+        }
     }
 
     private void myUnDo() {
