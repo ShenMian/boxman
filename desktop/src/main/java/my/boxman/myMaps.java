@@ -541,6 +541,20 @@ public class myMaps {
 		}
 	}
 
+	/**
+	 * 当前「关卡截图目录」= {@code sRoot + myPathList[m_Sets[36]]}，并保证以分隔符结尾。
+	 *
+	 * <p>⚠️ 为什么需要这个方法：原版 {@code sRoot} 自带尾斜杠（{@code "/推箱快手/"}），
+	 * 而 PC 的 {@code sRoot} 是 {@code user.home + "/.boxman"}（**没有**尾斜杠），
+	 * 但 {@code myPathList[0]}（默认位置）又是空串 —— 直接拼会得到
+	 * {@code ".../.boxmanm.png"}。凡是拼 {@code sRoot + myPathList[...]} 的地方都要走这里。
+	 */
+	static String picDir() {
+		String s = myMaps.sRoot + myMaps.myPathList[myMaps.m_Sets[36]];
+		if (!s.endsWith("/") && !s.endsWith(java.io.File.separator)) s += "/";
+		return s;
+	}
+
 	//取得截图列表
 	static void edPicList(String fn) {
 		File targetDir = new File(fn);

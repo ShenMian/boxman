@@ -1342,7 +1342,8 @@ public class BoxManPC extends JFrame {
 
     /** 原版 menu_recog：图像识别 */
     private void openRecognition() {
-        myMaps.edPicList(myMaps.sRoot + myMaps.myPathList[myMaps.m_Sets[36]]);
+        // 原版 BoxMan.java:617 —— 进入列表前先按当前位置刷一次截图列表
+        myMaps.edPicList(myMaps.picDir());
         new myPicListView().setVisible(true);
     }
 

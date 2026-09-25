@@ -16,8 +16,9 @@ import java.util.List;
 /**
  * GIF Animation Generator Dialog for BoxMan PC (Swing Port).
  *
- * <p>外壳用 {@link HoloAlertDialog}。标题按原版 {@code myExport.java:371} 的
- * {@code setTitle("帧间隔")} 取 <b>「帧间隔」</b>，按钮 取消 / 确定。
+ * <p>外壳用 {@link HoloAlertDialog}。标题按原版 {@code myExport.java:409} 的
+ * {@code setTitle("帧间隔")} 取 <b>「帧间隔」</b>，按钮按 {@code myExport.java:422-423} 取
+ * <b>取消 / 制作</b>（不是「确定」）。
  *
  * <p>内容按原版 {@code res/layout/gif_set_dialog.xml} 的分组还原：
  * 「12dp {@code #363636} 条 → 一行『其它：』+ 两个复选框 → 12dp 条
@@ -140,7 +141,10 @@ public class myGifMakeDialog extends HoloAlertDialog {
             }
             dispose();
         });
-        btMake = addButton("确定", this::startMake);
+        // 原版 myExport.java:423 —— PositiveButton 的文案是「制作」不是「确定」
+        // （res/menu/gif.xml 那一项「制作」在原版里从未被 inflate，是孤儿资源；
+        //   真正的「制作」是这个对话框的按钮）
+        btMake = addButton("制作", this::startMake);
         setDefaultButton(btMake);
     }
 

@@ -138,7 +138,7 @@ build/test_boxman_phase5nullDataBase/BoxMan.db    size=0          tables=[]
 | 计划书要求 | 实际 | 判定 |
 |-----------|------|------|
 | `BoxMan` → 主窗口单例 | `BoxManPC extends JFrame` | ✅ |
-| `myFileExplorerActivity` → 文件选择 | 曾用 3 处 `JFileChooser`，现剩 1 处 | ⚠️ 两处已撤掉：`BoxManPC` 的「导入...」走原版 `sel_Set()`（阶段 E），`myGridView` 的文档导入走「导入/」目录列表。**剩下 `myPicListView.browseLocalImage()` 一处** —— 它就是 `piclist.xml 位置` 那一项，原版走的是「5 个图片位置单选 + 修改 → `myFileExplorerActivity`」，需先移植该 Activity（阶段 G） |
+| `myFileExplorerActivity` → 文件选择 | ✅ **全项目已 0 处 `JFileChooser`**（阶段 G ①） | 前两处已在阶段 E 撤掉：`BoxManPC` 的「导入...」走原版 `sel_Set()`，`myGridView` 的文档导入走「导入/」目录列表。最后一处 `myPicListView.browseLocalImage()` 随阶段 G ① 的重写一起删掉 —— 原版根本没有系统文件选择器，「换目录」走的是 ActionBar「位置」→「图片位置」5 项单选 →「修改」→ `myFileExplorerActivity` |
 | `mySubmitList` → 提交列表 | `mySubmitList.java`（754 行，比原版 505 行还厚） | ✅ |
 | **`mySubmit` → `SubmitFrame`** | **不存在** | ❌ |
 | `Help` → `JEditorPane` | 实际用 `JTextArea`（见第 3 节，原版其实是 `TextView`） | ⚠️ 偏差但更接近原版 |
@@ -273,7 +273,7 @@ myGridView.java       2 处
 | `myGameView` | `player.xml` | 13 | **13** | ✅ 阶段 D-3 补齐 12 项，阶段 F 补上最后的 `YASS求解`（新增 `导出...`/`导入...`/`打开状态...`/`操作说明`，并把 `关于` 改回 `myAbout2`） |
 | `myEditView` | `edit.xml` | 13 | **13** | ✅ 阶段 D-2 已补齐 |
 | `myPicListView` | `piclist.xml` | 1 | 0 | `位置` |
-| `myFileExplorerActivity` | `filelist.xml` | 2 | 0 | `上一级`、`完成`（原版是独立 Activity，PC 侧未移植） |
+| `myFileExplorerActivity` | `filelist.xml` | 2 | 2 ✅ | `上一级`、`完成`（阶段 G ① 已移植，224 → 331 行） |
 | `(未使用)` | `gif.xml` | 1 | 0 | `制作`（PC 对话框按钮叫「确定」） |
 | | | **81** | **77** | **4**（含改名误报，需人工过） |
 
@@ -308,8 +308,9 @@ gif.xml      制作
 piclist.xml  位置
 ```
 
-> 这 4 项**全部落在未移植的类/功能上**：`myFileExplorerActivity`（2 项）、
-> `myGifMakeFragment`（1 项）、`myPicListViewAdapter`（1 项）。
+> ~~这 4 项**全部落在未移植的类/功能上**：`myFileExplorerActivity`（2 项）、
+> `myGifMakeFragment`（1 项）、`myPicListViewAdapter`（1 项）。~~
+> **✅ 阶段 G ① 已全部收口（2026-09-25），现在 strict / loose 均缺 0。**
 > 也就是说 —— **已移植的窗口里已无菜单缺口**。
 > （`player.xml YASS求解` 已在阶段 F 收口，2026-09-25。）
 
@@ -999,9 +1000,9 @@ PC 侧改前用的是裸 `JPopupMenu + JMenuItem`：样式与 ActionBar 溢出�
 ### 当前测试基线
 
 ```
-36 个用例类 / 354 个测试用例  全部通过
+37 个用例类 / 379 个测试用例  全部通过
 （阶段 E 后：32 / 242 → 阶段 F 后：32 / 251 → 阶段 G ②④ 后：34 / 291
-  → 阶段 G ⑥ 后：35 / 307 → 阶段 G ⑦ 后：36 / 354）
+  → 阶段 G ⑥ 后：35 / 307 → 阶段 G ⑦ 后：36 / 354 → 阶段 G ① 后：37 / 379）
 ./gradlew --offline clean test   BUILD SUCCESSFUL
 ```
 
@@ -1012,7 +1013,8 @@ PC 侧改前用的是裸 `JPopupMenu + JMenuItem`：样式与 ActionBar 溢出�
 `Phase22GridViewContextMenuTest`(24，阶段 G ②)、
 `Phase23FindFragmentTest`(12，阶段 G ②)、
 `Phase24EditUndoRedoTest`(16，阶段 G ⑥)、
-`Phase25BoxManContextMenuTest`(47，阶段 G ⑦)。
+`Phase25BoxManContextMenuTest`(47，阶段 G ⑦)、
+`Phase26PicListAndFileExplorerTest`(25，阶段 G ①)。
 新增快照工具 `RecogSnapshotTool`；`DialogSnapshotTool` 增加 `d12-Import` / `d13-Export`。
 `Phase4BatchBTest` / `Phase7SystemIntegrationTest` 的 `myFindView`、`myRecogView` 断言
 均已按原版语义改写；阶段 E 删掉 `SplitDialog` / `ExportDialog` 后，
@@ -1024,11 +1026,15 @@ PC 侧改前用的是裸 `JPopupMenu + JMenuItem`：样式与 ActionBar 溢出�
 `testGameViewHasNoMenuBar` 改名为 `testGameViewHasNoMenuBarAndNoMapPopupMenu`，
 新增「地图上没有右键菜单」的断言。
 
-**菜单保真度**：`strict OK 41 → 76 → 77`、`loose 真缺 12 → 5 → 4`
-（剩 `filelist.xml 上一级`/`完成`、`gif.xml 制作`、`piclist.xml 位置`，
-全部落在未移植的类/功能上；`player.xml YASS求解` 已在阶段 F 收口）。
-阶段 G ②④ 与阶段 G ⑦ **都不改变**这两个数字 —— 脚本只扫 `res/menu/*.xml`，
+**菜单保真度**：`strict OK 41 → 76 → 77 → 81`、`loose 真缺 12 → 5 → 4 → 0`。
+**阶段 G ① 把最后 4 项全收口了**：`filelist.xml 上一级`/`完成`（新移植
+`myFileExplorerActivity`）、`gif.xml 制作`（`myGifMakeDialog` 的按钮文案由「确定」改回
+「制作」）、`piclist.xml 位置`（`myPicListView` 重写后加上 ActionBar「位置」）。
+现在 **81 / strict 缺 0 / loose 缺 0**。
+阶段 G ②④ 与阶段 G ⑦ **不改变**这两个数字 —— 脚本只扫 `res/menu/*.xml`，
 扫不到 `onCreateContextMenu()` 的上下文菜单（见上）。
+⚠️ 同时修了脚本自身的映射表：`filelist.xml` 此前指向 `BoxManPC.java`（因为 PC 侧
+没有那个类），现改指向 `myFileExplorerActivity.java`；`gif.xml` 标注为「孤儿资源」。
 
 > ⚠️ 注意 `menu_fidelity.py` **测不出「置灰」** —— `myGridView` 那三项的标题一直都在，
 > 脚本从阶段 6 起就把它们算成 OK。所以「标题齐」之后还要单独查一遍
@@ -1062,9 +1068,14 @@ PC 侧改前用的是裸 `JPopupMenu + JMenuItem`：样式与 ActionBar 溢出�
   - **jpackage 打包**：`build.gradle` 新增 `packageApp`，实测产出可运行的 `BoxManPC.exe`。
     详见「阶段 F」小节。
 - **阶段 G（收口用）**：
-  1. 补 `myFileExplorerActivity`（`filelist.xml` 的「上一级」/「完成」）/
-     `myGifMakeFragment`（`gif.xml 制作`）/ `myPicListViewAdapter`（`piclist.xml 位置`）
-     等未移植类，把 `myPicListView` 的「位置」入口链补上；
+  1. ✅ **已完成（2026-09-25）**：补 `myFileExplorerActivity`（`filelist.xml` 的
+     「上一级」/「完成」，224 → 331 行）/ `myPicListViewAdapter`（183 → 111 行），
+     并**重写** `myPicListView`（原版 258 行；PC 此前是自造的 `sRoot+sPath` +
+     底部按钮栏 + `JFileChooser`，现改为 ActionBar「位置」+ 3 列 GridView +
+     上下文菜单「加载/删除」+「图片位置」5 项单选框）。
+     顺带把 `myGifMakeDialog` 的确认按钮由「确定」改回原版的**「制作」**
+     （`myExport.java:423` 的 PositiveButton；`res/menu/gif.xml` 是从未 inflate 的
+     孤儿资源）。**至此菜单保真度 81 / strict 缺 0 / loose 缺 0。** 详见「阶段 G ①」小节。
   2. ✅ **已完成（2026-09-25）**：`myGridView` 的 14 项上下文菜单 + `myFindFragment`
      相似度搜索引擎（详见「阶段 G ②④」小节）；
   3. **`mySolutionBrow` 整体重做**：原版是 `ExpandableListView` + ActionBar 的 Activity，
@@ -1593,3 +1604,125 @@ private ShownDialog captureShownDialog() {
 **当前基线：36 个用例类 / 354 个测试用例，全部通过。**
 菜单保真度 `81 / strict 缺 4 / loose 缺 4` **不变** —— `menu_fidelity.py` 只扫
 `res/menu/*.xml`，扫不到 `onCreateContextMenu()`（见本文档前面的说明）。
+
+---
+
+## 阶段 G ① —— 图片列表链路：`myFileExplorerActivity` / `myPicListViewAdapter` /
+## `myPicListView` + `gif.xml`「制作」（已完成，2026-09-25）
+
+### 1. 这一项原本被记成「最零散」，实际体量与判断
+
+审计里写的是「补三个未移植类」，动手前先量了一遍行数，发现之前的估计有两处错：
+
+| 类 | 原版 | PC（移植前） | 说明 |
+|---|---|---|---|
+| `myFileExplorerActivity` | 224 | — | 真·未移植，本次新写 |
+| `myPicListViewAdapter` | 183 | — | 真·未移植，本次新写 |
+| `myPicListView` | 258 | 132（**自造件**） | 不是「没移植」而是「移植歪了」，本次重写 |
+| `myGifMakeFragment` | 1471 | — | **早已被 `myGifMakeDialog`(347) + `gifencoder/`(3 个类) 覆盖**，不需要再移植 |
+
+⚠️ 两个纠正：
+- **`myGifMakeFragment` 不是缺口。** 它是个 `DialogFragment`，`onCreateDialog()`
+  返回的是一个 `ProgressDialog`（「合成中...」），GIF 编码器在 PC 侧已拆到
+  `gifencoder/` 包。原版 1471 行里绝大部分是 `AsyncGifMakeTask` 的逐帧绘制。
+- **`res/menu/gif.xml` 是孤儿资源**：全仓库 `grep "R.menu.gif"` **零命中**，
+  原版从来没有 inflate 过它。真正的「制作」是 `myExport.java:423` 那个
+  「帧间隔」对话框的 `setPositiveButton("制作", ...)`。所以 `gif.xml` 那一项
+  在 PC 侧的落点是 `myGifMakeDialog` 的按钮文案 —— 此前写成「确定」。
+
+### 2. `myFileExplorerActivity`（新写，331 行）
+
+| 原版 | PC |
+|---|---|
+| `setContentView(R.layout.line_list)` | 顶行「当前位置: 」+ 路径 label，下面 `JList` |
+| `setTitle("自定义位置")` | `actionBar.setBarTitle("自定义位置")` |
+| `setDisplayHomeAsUpEnabled(true)` | `setUpEnabled(true, this::finish)` |
+| `filelist.xml` 两项（`always`） | `addBarAction("上一级")` / `addBarAction("完成")` |
+| `onKeyDown(BACK)` | ESC：`getRootPane()` 的 input/action map |
+| `setResult(999)` | `OnPathPicked` 回调（PC 没有 `startActivityForResult`） |
+
+- 列表：**目录优先 + 按名小写排序**，文件只留 `jpg/bmp/png`；
+  ⚠️ 原版判断是 `(dot > -1) && (dot < fn.length())` —— **没有扩展名的文件会被
+  无条件列出**（不参与后缀过滤），照抄。
+- 根目录：`myPathList[2]` 非空且存在 → 它，否则 `sRoot`；不存在 → Toast
+  「系统错误，无法执行该操作！」+ `finish()`。
+- BACK：路径栏为空 → 弹「提醒 / 退出浏览，确定吗？（取消/确定）」；否则 → 上一级。
+- `myParent()`：`canonical != sRoot` 才上移。
+- **完成**：`myPathList[m_Sets[36]] = 路径 + '/'`（原版把 `if (!str.isEmpty())`
+  注释掉了，空路径也会写成 `"/"`，照抄）+ 回调 + `finish()`。
+
+### 3. 两处**必要的 PC 适配**（照抄会在 Windows 上失效）
+
+1. **路径分隔符**：`myMaps.sRoot` 是 `user.home + "/.boxman"`（正斜杠、无尾斜杠），
+   `File.getCanonicalPath()` 在 Windows 上返回反斜杠 → 原版的
+   `canonical.equals(sRoot)` 与 `canonical.replace(sRoot, "")` **都会全部落空**，
+   表现为「上一级能一路退到盘符」「路径栏永远显示绝对路径」。
+   改成**两边都取 canonical** 再比较 / 去前缀。
+2. **`sRoot` 无尾斜杠 + `myPathList[0] == ""`**：原版 `sRoot` 是 `"/推箱快手/"`
+   （自带尾斜杠），PC 的不是 → `sRoot + ""` 会拼出 `.../.boxman` + `m.png`
+   = `.../.boxmanm.png`。新增 **`myMaps.picDir()`** 统一处理，已接到
+   `myPicListViewAdapter` / `myPicListView.reloadList()` / `BoxManPC.openRecognition()`。
+   （这个缺陷在移植前就存在，只是没被触发过。）
+
+### 4. `myPicListView` 重写（132 → 289 行）
+
+删掉 PC 自造的底部按钮栏（「选择本地文件...」/「关闭」）与 `JFileChooser`
+（**至此全项目 0 处 `JFileChooser`**），改为：
+
+| 原版 | PC |
+|---|---|
+| `GridView` `numColumns="auto_fit"` `columnWidth="350px"` | 折算 **3 列**（350px ÷ density 3.4 ≈ 103dp；370 ÷ 103 ≈ 3），缩略图框 103×147 |
+| `verticalSpacing="10dip"` / `horizontalSpacing="5px"` | `GridLayout(0, 3, 1, 10)` |
+| `setTitle(myPathList[m_Sets[36]])` | `actionBar.setBarTitle(...)` |
+| `piclist.xml` 位置（`always`） | `addBarAction("位置", ...)` |
+| `onCreateContextMenu` 加载 / 删除 | `HoloPopupMenu`，**右键**触发（PC 的长按映射） |
+| 「图片位置」5 项单选 + 修改/打开/取消 | `HoloChoiceDialog` + `addButton("取消"/"修改"/"打开")` |
+| `onActivityResult(999)` | `onPathPicked(String)` |
+
+- 「修改」闸门：`m_Sets[36]` 在 **2..4** 才开文件浏览器，否则 Toast「这个位置不能修改！」
+- 「打开」：位置为空 → 补成 `"/"`；异常 → Toast「错误的位置！」
+- 单击缩略图：`loadEDPic` → 宽高都 > 200 才开 `myRecogView`，否则 Toast
+  「图片尺寸太小或不能打开！」；另有 2000ms 防连点闸门。
+
+### 5. `myPicListViewAdapter`（新写，111 行）
+
+原版是 `BaseAdapter` + `AsyncTask` 异步解码 + `SparseArray` 缓存；PC 改成
+「按需解码 + `Map` 缓存 + 丢引用交给 GC」（没有 `Bitmap.recycle()`）。
+⚠️ 原版 `getThumbnail` 用 `createScaledBitmap(350, 500, false)` **强制拉伸**不保比例，
+PC 改成**等比缩放后居中** —— 拉伸会把关卡截图压扁，与原版 `ImageView` 的
+`CENTER_INSIDE` 最终观感不一致，故不照抄拉伸。失败时返回 1×1 占位图（与原版一致）。
+
+### 6. `myGifMakeDialog`：确定 → 制作
+
+原版 `myExport.java:409-423`：标题「帧间隔」，`setNegativeButton("取消", null)`
++ `setPositiveButton("制作", ...)`。PC 此前写「确定」，已改回「制作」。
+（`res/menu/gif.xml` 标注为孤儿资源，`menu_fidelity.py` 的映射表也已同步。）
+
+### 7. 测试
+
+新增 `Phase26PicListAndFileExplorerTest`（**25 条**）：菜单标题/顺序/无 ⋮、
+目录优先 + 图片后缀过滤、进目录、点文件无反应、上一级到根停住、完成写回
+`myPathList` + 回调、BACK 两条分支、适配器路径拼接与等比缩放与 1×1 占位、
+「位置」对话框 5 项与下标夹取、「修改」闸门三种情况、「打开」空路径补 `/`、
+上下文菜单标题与真删除文件、小图 Toast 闸门、源码扫描锁（无 `new JFileChooser(`、
+`addButton("制作"`、`myActionBar` + `addBarAction`）。
+
+两个新踩的测试坑：
+- **`HoloAlertDialog` 不设 AWT 的 `title`**（标题是自绘的）→ `getTitle()` 返回
+  空串，别拿它断言标题；改用 `instanceof` 判定对话框类型。
+- **源码扫描要写精确一点**：类注释里提到 `JFileChooser` 也会被 `contains` 命中，
+  断言要写成 `new JFileChooser(`。
+
+### 8. Android ↔ PC 差异表
+
+| 差异 | 处理 |
+|---|---|
+| `startActivityForResult` / `setResult(999)` | `OnPathPicked` 回调 |
+| `AsyncTask` 解码缩略图 | 按需同步解码 + `Map` 缓存 |
+| `Bitmap.recycle()` 防 OOM | 丢引用交给 GC |
+| `GridView` 的 `auto_fit` / `columnWidth` | 折算成 3 列 × 103×147 |
+| `sRoot` 尾斜杠 | `myMaps.picDir()` 兜底 |
+| Windows 反斜杠 | 两边都取 canonical |
+
+**当前基线：37 个用例类 / 379 个测试用例，全部通过。**
+**菜单保真度：81 / strict 缺 0 / loose 缺 0 —— 阶段 G ① 把最后 4 项全部收口。**
