@@ -8,9 +8,8 @@ This is a port of [BoxMan](https://github.com/yuweng227/BoxMan_And)[^boxman] to 
 
 ## Requirements
 
-- **JDK 17 or newer.** The bundled Gradle wrapper is 9.7.1, which requires 17+. CI runs on Temurin 17 and 21.
-  The compiled bytecode still targets **Java 8** (`sourceCompatibility`/`targetCompatibility = 1.8`), so the produced jar runs on any Java 8+ runtime.
-- No Android SDK, no native toolchain, no external solver binary.
+1. **Build requirement**: JDK 17 or newer. The bundled Gradle wrapper requires 17+.
+2. **Runtime requirement**: Java 8 or newer. The compiled bytecode targets Java 8, so the produced jar runs on any Java 8+ runtime.
 
 ## Build and run
 
@@ -21,12 +20,6 @@ cd desktop
 ./gradlew test            # run the JUnit suite
 ./gradlew fatJar          # build a self-contained jar
 java -jar build/libs/BoxManPC-all.jar
-```
-
-On Linux CI the tests are run under a virtual display because a handful of them render real Swing windows:
-
-```bash
-xvfb-run -a ./gradlew --no-daemon clean test fatJar
 ```
 
 On Windows use `gradlew.bat`.
