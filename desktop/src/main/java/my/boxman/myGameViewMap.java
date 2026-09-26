@@ -81,6 +81,11 @@ public class myGameViewMap extends JPanel implements MouseListener, MouseMotionL
     selNode selNode, selNode2; //计数区域对角点，计数区域内的各类箱子数量
     char mClickObj;  //点击的物件（箱子、空地、墙壁等）
 
+    private static final int MODE_NONE = 0;
+    private static final int MODE_DRAG = 1;  //拖动模式
+    private static final int MODE_ZOOM = 2;  //缩放模式
+    private int mMode = MODE_NONE;      //当前模式
+
     public int m_nArenaTop;  //舞台 Top 距屏幕顶的距离
     int w_bkPic, h_bkPic, w_bkNum, h_bkNum;  //（舞台用）背景图片的宽、高；及其平铺时的横、纵个数
     int m_nPicWidth, m_nPicHeight, m_nRows, m_nCols;  //关卡图的像素尺寸
@@ -285,11 +290,6 @@ public class myGameViewMap extends JPanel implements MouseListener, MouseMotionL
 
     //缩放、拖拽
     private class TouchListener {
-        private static final int MODE_NONE = 0;
-        private static final int MODE_DRAG = 1;  //拖动模式
-        private static final int MODE_ZOOM = 2;  //缩放模式
-        private int mMode = MODE_NONE;      //当前模式
-
         float mMaxScale = 5;   //最大缩放级别
         private float mStartDis;  //缩放开始时的手指间距
         private PointF mStartPoint = new PointF(), mClickPoint = new PointF();  //第一触点，相对及绝对坐标
@@ -814,7 +814,9 @@ public class myGameViewMap extends JPanel implements MouseListener, MouseMotionL
                 mStartDis = endDis;               //重置距离
                 mCurrentMatrix.getValues(values);
                 scale = checkMaxScale(scale, values);
-                PointF centerF = getCenter(scale, values);
+//              PointF centerF = getCenter(scale, values);    // original BoxMan center calculation
+                PointF centerF = new PointF();                  // new center calculation
+                midPoint(centerF, event);                       // new center calculation
                 mCurrentMatrix.postScale(scale, scale, centerF.x, centerF.y);
             }
         }
@@ -1129,6 +1131,14 @@ public class myGameViewMap extends JPanel implements MouseListener, MouseMotionL
         canvas.save();
         mCurrentMatrix.getValues(values);
         values[Matrix.MTRANS_Y] += m_nArenaTop;
+
+        if (mMode != MODE_ZOOM) {  // 缩放过程中不取整，否则手势缩放会被吸附住
+            values[Matrix.MSCALE_X] = values[Matrix.MSCALE_Y] =
+                    ((int) (m_PicWidth * values[Matrix.MSCALE_X])) / (float) m_PicWidth; // scale so the images are scaled without fractions
+            values[Matrix.MTRANS_X] = Math.round(values[Matrix.MTRANS_X]);               // translate without fractions
+            values[Matrix.MTRANS_Y] = Math.round(values[Matrix.MTRANS_Y]);               // translate without fractions
+        }
+
         mMapMatrix.setValues(values);
         m_fTop = values[Matrix.MTRANS_Y];
         m_fLeft = values[Matrix.MTRANS_X];
@@ -2206,26 +2216,52 @@ public class myGameViewMap extends JPanel implements MouseListener, MouseMotionL
         if (m_Game.bt_Sel.isChecked()) { //计数状态
             if (m_Game.bt_BK.isChecked()) {  //逆推
                 selNode2.setPT(m_Game.bk_selArray, m_iR, m_iC);
-                m_Count[3] = 0;  //逆推箱子数
-                m_Count[4] = 0;  //逆推目标数
-                m_Count[5] = 0;  //逆推完成数
-                for (int r = 0; r < m_nRows; r++)
-                    for (int c = 0; c < m_nCols; c++) {
-                        switch (m_Game.bk_cArray[r][c]) {
-                            case '$':
-                                m_Count[3] += m_Game.bk_selArray[r][c];
-                                break;
-                            case '*':
-                                m_Count[3] += m_Game.bk_selArray[r][c];
-                                m_Count[4] += m_Game.bk_selArray[r][c];
-                                m_Count[5] += m_Game.bk_selArray[r][c];
-                                break;
-                            case '.':
-                            case '+':
-                                m_Count[4] += m_Game.bk_selArray[r][c];
-                                break;
+                m_Count[3] = 0;  //逆推箱子数         | number of boxes in reverse mode (in selected area)
+                m_Count[4] = 0;  //逆推目标数         | number of goals in reverse mode (in selected area)
+                m_Count[5] = 0;  //逆推完成数         | number of boxes on goals in reverse mode (in selected area)
+
+                if (myMaps.m_Sets[13] == 1) {  //“互动双推”模式  | Interactive double push mode is activated
+                    // Interactive double push counting:
+                    // counting the goals means counting the boxes on their current
+                    // forward play position! This means the boxes must be
+                    // read from m_Game.m_cArray
+                    for (int r = 0; r < m_nRows; r++) {
+                        for (int c = 0; c < m_nCols; c++) {
+                            if (m_Game.bk_selArray[r][c] > 0) {  // position is marked for counting
+                                if (m_Game.bk_cArray[r][c] == '$' || m_Game.bk_cArray[r][c] == '*') {   // backward board contains a box
+                                    m_Count[3]++;   // one more box
+                                    if (m_Game.m_cArray[r][c] == '$' || m_Game.m_cArray[r][c] == '*') {  // forward board contains a box
+                                        m_Count[4]++; // one more goal
+                                        m_Count[5]++; // one more box on goal
+                                    }
+                                } else {
+                                    if (m_Game.m_cArray[r][c] == '$' || m_Game.m_cArray[r][c] == '*') { // forward board contains a box
+                                        m_Count[4]++; // one more goal
+                                    }
+                                }
+                            }
                         }
                     }
+                } else {
+                    // Counting for normal reverse play
+                    for (int r = 0; r < m_nRows; r++)
+                        for (int c = 0; c < m_nCols; c++) {
+                            switch (m_Game.bk_cArray[r][c]) {
+                                case '$':
+                                    m_Count[3] += m_Game.bk_selArray[r][c];
+                                    break;
+                                case '*':
+                                    m_Count[3] += m_Game.bk_selArray[r][c];
+                                    m_Count[4] += m_Game.bk_selArray[r][c];
+                                    m_Count[5] += m_Game.bk_selArray[r][c];
+                                    break;
+                                case '.':
+                                case '+':
+                                    m_Count[4] += m_Game.bk_selArray[r][c];
+                                    break;
+                            }
+                        }
+                }
             } else {  //正推
                 selNode.setPT(m_Game.m_selArray, m_iR, m_iC);
                 m_Count[0] = 0;  //正推箱子数
