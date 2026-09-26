@@ -661,11 +661,18 @@ public class Phase25BoxManContextMenuTest {
 
     @Test
     public void testNullActionButtonClosesTheDialog() {
-        // 原版 AlertDialog 的按钮无条件先 dismiss，监听器只是可选的附加动作；
-        // 所以 addButton(text, null) 必须兜底 dispose，而不是留个点不动的死按钮。
+        // 原版 AlertController.mButtonHandler：先 m.sendToTarget() 派发监听器，随后**无条件**
+        // 发一条 MSG_DISMISS_DIALOG。所以关闭与 action 是否为 null 无关 ——
+        // addButton(text, null) 是「点了就关」而不是死按钮，addButton(text, action) 也要关。
+        //
+        // ⚠️ 这条原先锁的是实现字面量 `if (action != null) { action.run(); } else { dispose(); }`，
+        // 而那个 if/else 正是 bug：传了 action 的按钮**永远关不掉**（用户报的
+        // 「点『是』不消失，只是一直跳转到下一个关卡」）。现在改成锁语义。
         String src = readSource("compat/HoloAlertDialog.java").replaceAll("\\s+", " ");
-        assertTrue("addButton 的 null 分支应兜底 dispose()",
-                src.contains("if (action != null) { action.run(); } else { dispose(); }"));
+        assertFalse("不能再是 if/else：有 action 就只跑 action、不关框（那会让按钮永远关不掉）",
+                src.contains("} else { dispose(); }"));
+        assertTrue("addButton 的监听器必须无条件 dispose()（原版 MSG_DISMISS_DIALOG）",
+                src.contains("finally { dispose(); }"));
     }
 
     @Test

@@ -668,12 +668,16 @@ public class BoxManPC extends JFrame {
         et.selectAll();
         dlg.setContentView(HoloContent.row(et));
         dlg.addButton("取消", null);
-        JButton ok = dlg.addButton("确定", () -> {
+        // 原版「确定」是 setPositiveButton：监听器里**不** dismiss，靠 AlertDialog 自动关 ——
+        // 也就是「校验失败也照关，只弹 Toast」。所以这里传 action 即可，关框交给 addButton。
+        JButton ok = dlg.addButton("确定", () -> applyRename(nd, et.getText().trim()));
+        dlg.setDefaultButton(ok);
+        // ⚠️ 原版 Enter 走的**不是** positive 按钮，而是 setOnKeyListener：
+        //     if (成功) { …; di.dismiss(); return true; }   // 失败则 return false → 留在原地让用户改
+        // 所以这里不能复用 ok.doClick()（那会无条件关框），必须自己判成功才关。
+        et.addActionListener(e -> {
             if (applyRename(nd, et.getText().trim())) dlg.dispose();
         });
-        dlg.setDefaultButton(ok);
-        // 原版 setOnKeyListener 里 KEYCODE_ENTER 与「确定」等价
-        et.addActionListener(e -> ok.doClick());
         dialogShower.accept(dlg);
     }
 

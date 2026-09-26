@@ -43,6 +43,39 @@ public class myGameView extends JFrame {
     AsyncCountBoxsTask mTask;
     public RunMicroTask mMicroTask;
 
+    /** 测试缝：把「弹模态框」换成「只记不弹」（见 TEST_NOTES 的 dialogShower 一节） */
+    java.util.function.Consumer<JDialog> dialogShower = dlg -> dlg.setVisible(true);
+
+    /**
+     * 「死锁移动」提示框 —— 原版 {@code myGameView.java:1315-1325} 的 {@code dlg4 / lockDlg}。
+     *
+     * <p>原版是「在挂 {@code bt_UnDo} 监听之前建好一个，之后只用 {@code setMessage()} +
+     * {@code show()}」，而 {@code show()} 不阻塞。PC 端原先改成了阻塞式
+     * {@code JOptionPane.showConfirmDialog}，见 {@link #showLockDlg()} 的注释。
+     */
+    public HoloAlertDialog lockDlg = null;
+
+    /**
+     * 「恭喜过关！」提示框 —— 原版 {@code myGameView.java:1243-1268} 的 {@code dlg / AotoNextDlg}。
+     *
+     * <p>⚠️ <b>它在 {@code UpData1()} 里被弹出来，而 {@code UpData1()} 是 1ms 动画定时器的回调</b>
+     * （原版 {@code myGameView.java:345 / 385}）。PC 端原先写成阻塞式
+     * {@code JOptionPane.showConfirmDialog} —— 那就是「点『否』直接卡死」的元凶：
+     * 模态框在 EDT 上开嵌套事件循环，1ms 定时器在嵌套循环里照旧触发 → {@code UpData1()}
+     * 又走早退分支 → 又 {@code showConfirmDialog} → 再嵌一层，栈无限加深。
+     * 原版是「建好一个 + {@code show()} 不阻塞」，照搬。
+     */
+    public HoloAlertDialog AotoNextDlg = null;
+
+    /** 「退出」提示框 —— 原版 {@code myGameView.java:1270-1279} 的 {@code dlg0 / exitDlg}。 */
+    public HoloAlertDialog exitDlg = null;
+
+    /** 「更换关卡（上一关）」提示框 —— 原版 {@code myGameView.java:1282-1296} 的 {@code dlg1 / exitDlg2}。 */
+    public HoloAlertDialog exitDlg2 = null;
+
+    /** 「更换关卡（下一关）」提示框 —— 原版 {@code myGameView.java:1299-1313} 的 {@code dlg2 / exitDlg3}。 */
+    public HoloAlertDialog exitDlg3 = null;
+
     javax.swing.Timer mClockTimer;  // 背景时间定时器
     javax.swing.Timer myTimer1;
     javax.swing.Timer myTimer2;
@@ -260,6 +293,94 @@ public class myGameView extends JFrame {
     }
 
     private void setupButtonEvents() {
+        // 原版 onCreate 里一次性建好 5 个提示框（myGameView.java:1243-1325），顺序是
+        // dlg(AotoNextDlg) → dlg0(exitDlg) → dlg1(exitDlg2) → dlg2(exitDlg3) → dlg4(lockDlg)。
+        // 全部 setCancelable(false)，之后只用 show() —— 而 show() 不阻塞。
+        //
+        // ⚠️ 这 4 个（尤其 AotoNextDlg）**不能**再用阻塞式 JOptionPane：
+        //   · AotoNextDlg 在 UpData1() 里弹，而 UpData1() 是 myTimer1（1ms）的回调；
+        //   · exitDlg / exitDlg2 / exitDlg3 由 DoEvent() 的键盘快捷键触发，
+        //     也完全可能在动画循环还在跑的时候按下。
+        // 模态框会在 EDT 上开嵌套事件循环，而那个 1ms 定时器在嵌套循环里照旧触发 →
+        // 同一个提示框被一层层叠着弹出来，栈无限加深，表现就是「点了按钮直接卡死」。
+
+        // 「恭喜过关！」——原版 dlg（myGameView.java:1243-1268）
+        AotoNextDlg = HoloAlertDialog.createNonModal(this, "恭喜过关！");
+        AotoNextDlg.setMessage("是否自动打开下一个未解关卡？");
+        AotoNextDlg.addButton("否", null);
+        JButton btNextLevel = AotoNextDlg.addButton("是", () -> {
+            int k = myMaps.m_lstMaps.indexOf(myMaps.curMap) + 1;
+            int len = myMaps.m_lstMaps.size();
+            while (k < len && myMaps.m_lstMaps.get(k).Solved) {
+                k++;
+            }
+            if (k < len) {
+                myMaps.curMap = myMaps.m_lstMaps.get(k);
+                myMaps.m_nTrun = myMaps.curMap.Trun;
+                bt_BK.setChecked(false);
+                bt_TR.setChecked(false);
+                bt_TR.setText(myMaps.m_nTrun + " 转");
+                initMap();
+                ls_bk_cArray = bk_cArray;
+            } else {
+                MyToast.showToast(this, "后面没有未解关卡！", MyToast.LENGTH_SHORT);
+            }
+        });
+        AotoNextDlg.setDefaultButton(btNextLevel);
+
+        // 「退出」——原版 dlg0（myGameView.java:1270-1279）
+        exitDlg = HoloAlertDialog.createNonModal(this, "退出");
+        exitDlg.setMessage("有状态未保存，坚持退出吗？");
+        exitDlg.addButton("否", null);
+        JButton btExitYes = exitDlg.addButton("是", () -> {
+            myStop();
+            dispose();
+        });
+        exitDlg.setDefaultButton(btExitYes);
+
+        // 「更换关卡（上一关）」——原版 dlg1（myGameView.java:1282-1296）
+        exitDlg2 = HoloAlertDialog.createNonModal(this, "更换关卡");
+        exitDlg2.setMessage("有状态未保存，坚持更换吗？");
+        exitDlg2.addButton("否", null);
+        JButton btPreYes = exitDlg2.addButton("是", () -> {
+            int n1 = myMaps.m_lstMaps.indexOf(myMaps.curMap);
+            if (n1 > 0) {
+                myPre(n1 - 1);
+            } else {
+                MyToast.showToast(this, "没有了！", MyToast.LENGTH_SHORT);
+            }
+        });
+        exitDlg2.setDefaultButton(btPreYes);
+
+        // 「更换关卡（下一关）」——原版 dlg2（myGameView.java:1299-1313）
+        exitDlg3 = HoloAlertDialog.createNonModal(this, "更换关卡");
+        exitDlg3.setMessage("有状态未保存，坚持更换吗？");
+        exitDlg3.addButton("否", null);
+        JButton btNextYes = exitDlg3.addButton("是", () -> {
+            int n2 = myMaps.m_lstMaps.indexOf(myMaps.curMap);
+            if (n2 >= 0 && n2 + 1 < myMaps.m_lstMaps.size()) {
+                myNext(n2 + 1);
+            } else {
+                MyToast.showToast(this, "没有了！", MyToast.LENGTH_SHORT);
+            }
+        });
+        exitDlg3.setDefaultButton(btNextYes);
+
+        // 「死锁移动」提示框：原版在挂 bt_UnDo 监听之前就把它建好（myGameView.java:1315-1325）。
+        // 原版：setTitle("死锁移动").setMessage(...).setCancelable(false)
+        //       .setNegativeButton("继续", null).setPositiveButton("撤销移动", → bt_UnDo 取反)
+        // ⚠️ 必须是**非模态**：它是在 1ms 动画定时器里弹的，模态框会在 EDT 上开嵌套事件循环，
+        // 定时器照旧触发、动画继续推进、再次满足死锁条件、再弹一层，层层嵌套直到卡死。
+        lockDlg = HoloAlertDialog.createNonModal(this, "死锁移动");
+        lockDlg.addButton("继续", null);
+        JButton btUndoMove = lockDlg.addButton("撤销移动", () -> {
+            // 原版 AlertDialog 的按钮先 dismiss 再走监听器，这里保持同样顺序
+            lockDlg.dispose();
+            bt_UnDo.setChecked(!bt_UnDo.isChecked());
+        });
+        // 原版 AlertDialog 会把 positive 按钮（button1，最右）设为默认焦点按钮
+        lockDlg.setDefaultButton(btUndoMove);
+
         // 后退
         bt_UnDo.addItemListener(e -> {
             StopMicro();
@@ -604,11 +725,8 @@ public class myGameView extends JFrame {
         mMap.invalidate();
 
         if (m_bMoved && ((m_lstMovUnDo != null && m_lstMovUnDo.size() > 0) || (m_lstMovUnDo2 != null && m_lstMovUnDo2.size() > 0))) {
-            int ret = JOptionPane.showConfirmDialog(this, "有状态未保存，坚持退出吗？", "退出", JOptionPane.YES_NO_OPTION);
-            if (ret == JOptionPane.YES_OPTION) {
-                myStop();
-                dispose();
-            }
+            // 原版 exitDlg.show()（myGameView.java:1726 / 4176 / 5158）—— 非阻塞
+            showDialog(exitDlg);
         } else {
             myStop();
             dispose();
@@ -640,8 +758,50 @@ public class myGameView extends JFrame {
 
         myTimer4 = new javax.swing.Timer(1, e -> UpData4(1));
         myTimer4.setRepeats(false);
+
+        // ⚠️ 这 4 个一次性定时器**必须**关掉 coalesce（合并投递），否则动画循环会静默停摆。
+        //
+        // 原版是 {@code RefreshHandler1..4.sleep(ms)}（myGameView.java:168-171 等）：
+        //     removeMessages(0);  sendMessageDelayed(obtainMessage(1), m);
+        // Looper 对每个 message 都会投递一次，**不存在合并**，所以每一拍都必然到达。
+        //
+        // javax.swing.Timer 默认 coalesce == true，Timer.post() 是这样写的：
+        //     if (notify.compareAndSet(false, true) || !coalesce) invokeLater(doPostEvent);
+        // 而 notify 只在 DoPostEvent.run() **回调返回之后**才被 cancelEvent() 清掉。
+        // 于是「在定时器自己的回调里重新排下一拍」（正是 sleepTimer 的用法）会踩中这个竞态：
+        //   ① 回调执行中 → notify == true；
+        //   ② sleepTimer 里 isRunning() 为 false（TimerQueue 线程在 post() 之前就已把
+        //      delayedTimer 置空），所以不会走 stop() → notify 仍是 true；
+        //   ③ TimerQueue 线程 1ms 后 post() → compareAndSet(false,true) **失败**，
+        //      且 coalesce 为 true → **不投递** → 这一拍被丢掉；
+        //   ④ 回调返回 → cancelEvent() → notify = false。
+        //   结果：定时器既不在队列里、notify 也是 false，**再也不会响**。
+        //
+        // 若第 ③ 步发生在第 ④ 步之前（即 EDT 在回调里停留超过 1ms），就必然丢拍。
+        // 弹「死锁移动」提示框正好会这样：showLockDlg() 紧跟在本拍 sleepTimer() 之后，
+        // setVisible() 建窗/定尺寸要几十 ms，EDT 一直停在回调里 → 丢拍 → 循环停摆 →
+        // m_bBusing 永远停在 true → bt_UnDo 监听器第 396 行 `if (m_bBusing) return;` 早退，
+        // 表现就是用户报的「点击撤销不会撤销，直接卡住」。
+        //
+        // 关掉 coalesce 后 post() 走 `|| !coalesce` 分支，每次都投递 —— 与 sendMessageDelayed 等价。
+        myTimer1.setCoalesce(false);
+        myTimer2.setCoalesce(false);
+        myTimer3.setCoalesce(false);
+        myTimer4.setCoalesce(false);
     }
 
+    /**
+     * 排下一拍动画 —— 等价于原版 {@code RefreshHandler1..4.sleep(ms)}
+     * （{@code myGameView.java:168-171}）：
+     * <pre>removeMessages(0); sendMessageDelayed(obtainMessage(1), m);</pre>
+     *
+     * <p>{@code stop()} 对应 {@code removeMessages(0)}（撤掉尚未投递的那一拍），
+     * {@code start()} 对应 {@code sendMessageDelayed()}（排新的一拍）。
+     *
+     * <p>⚠️ 调用方就是定时器自己的回调，所以 {@code isRunning()} 此时为 false 而跳过
+     * {@code stop()} 是正常的 —— 但这也意味着 {@code start()} 必须能独立保证投递，
+     * 这依赖 {@link #initTimers()} 里的 {@code setCoalesce(false)}，详见那里的注释。
+     */
     private void sleepTimer(javax.swing.Timer timer, int ms) {
         if (timer.isRunning()) timer.stop();
         timer.setInitialDelay(Math.max(1, ms));
@@ -752,25 +912,8 @@ public class myGameView extends JFrame {
                 if (m_bMoved) {
                     if (myMaps.curMap != null && myMaps.curMap.Level_id > 0) {
                         saveAns(1);
-                        int opt = JOptionPane.showConfirmDialog(this, "恭喜过关！\n是否自动打开下一个未解关卡？", "恭喜过关", JOptionPane.YES_NO_OPTION);
-                        if (opt == JOptionPane.YES_OPTION) {
-                            int k = myMaps.m_lstMaps.indexOf(myMaps.curMap) + 1;
-                            int len = myMaps.m_lstMaps.size();
-                            while (k < len && myMaps.m_lstMaps.get(k).Solved) {
-                                k++;
-                            }
-                            if (k < len) {
-                                myMaps.curMap = myMaps.m_lstMaps.get(k);
-                                myMaps.m_nTrun = myMaps.curMap.Trun;
-                                bt_BK.setChecked(false);
-                                bt_TR.setChecked(false);
-                                bt_TR.setText(myMaps.m_nTrun + " 转");
-                                initMap();
-                                ls_bk_cArray = bk_cArray;
-                            } else {
-                                MyToast.showToast(this, "后面没有未解关卡！", MyToast.LENGTH_SHORT);
-                            }
-                        }
+                        // 原版 AotoNextDlg.show()：非阻塞、已显示就早退（myGameView.java:345 / 385）
+                        showDialog(AotoNextDlg);
                     } else {
                         MyToast.showToast(this, "正推通关！", MyToast.LENGTH_SHORT);
                         saveAns(0);
@@ -810,25 +953,8 @@ public class myGameView extends JFrame {
                 if (m_bMoved) {
                     if (myMaps.curMap != null && myMaps.curMap.Level_id > 0) {
                         saveAns(1);
-                        int opt = JOptionPane.showConfirmDialog(this, "恭喜过关！\n是否自动打开下一个未解关卡？", "恭喜过关", JOptionPane.YES_NO_OPTION);
-                        if (opt == JOptionPane.YES_OPTION) {
-                            int k = myMaps.m_lstMaps.indexOf(myMaps.curMap) + 1;
-                            int len = myMaps.m_lstMaps.size();
-                            while (k < len && myMaps.m_lstMaps.get(k).Solved) {
-                                k++;
-                            }
-                            if (k < len) {
-                                myMaps.curMap = myMaps.m_lstMaps.get(k);
-                                myMaps.m_nTrun = myMaps.curMap.Trun;
-                                bt_BK.setChecked(false);
-                                bt_TR.setChecked(false);
-                                bt_TR.setText(myMaps.m_nTrun + " 转");
-                                initMap();
-                                ls_bk_cArray = bk_cArray;
-                            } else {
-                                MyToast.showToast(this, "后面没有未解关卡！", MyToast.LENGTH_SHORT);
-                            }
-                        }
+                        // 原版 AotoNextDlg.show()：非阻塞、已显示就早退（myGameView.java:345 / 385）
+                        showDialog(AotoNextDlg);
                     } else {
                         MyToast.showToast(this, "正推通关！", MyToast.LENGTH_SHORT);
                         saveAns(0);
@@ -877,11 +1003,48 @@ public class myGameView extends JFrame {
 
         // 正推死锁判断
         if (m_nStep == 0 && myMaps.m_Sets[11] == 1 && mMap.d_Moves >= mMap.m_PicWidth && myLock(m_iR9, m_iC9)) {
-            int ret = JOptionPane.showConfirmDialog(this, "这一步造成关卡死锁，继续吗？", "死锁移动", JOptionPane.YES_NO_OPTION);
-            if (ret == JOptionPane.NO_OPTION) {
-                bt_UnDo.setChecked(!bt_UnDo.isChecked());
-            }
+            showLockDlg();
         }
+    }
+
+    /**
+     * 弹出「死锁移动」提示框 —— 原版 {@code myGameView.java:435 / 561} 的 {@code lockDlg.show()}。
+     *
+     * <p>⚠️ <b>不要</b>改回 {@code JOptionPane.showConfirmDialog}。这个提示是在
+     * {@code myTimer1 / myTimer3}（1ms 一次性定时器）驱动的动画循环里弹的：模态框会在 EDT 上
+     * 开一个嵌套事件循环，而那个定时器在嵌套循环里照旧触发 —— 动画继续跑完一步、又满足死锁
+     * 条件、于是在上一层模态框<b>内部</b>再弹一层，栈无限加深，用户看到的就是「点『否』直接卡死」。
+     *
+     * <p>原版不会这样，因为 Android 的 {@code AlertDialog.show()} 不阻塞，而且
+     * {@code Dialog.show()} 在已显示时会 {@code if (mShowing) return;} 早退 —— 所以动画每走
+     * 一步都调一次 {@code show()} 也只是把同一个框保持在屏幕上。这里两条都照搬。
+     *
+     * <p>包内可见（而非 {@code private}）：Phase31 用例要直接驱动它来验证「已显示就不重复弹」。
+     */
+    void showLockDlg() {
+        if (isLockDlgVisible()) return;
+        showDialog(lockDlg);
+    }
+
+    /**
+     * 弹出一个已经建好的提示框 —— 等价于原版 {@code Dialog.show()}。
+     *
+     * <p>⚠️ Android 的 {@code Dialog.show()} 在已经显示时会
+     * {@code if (mShowing) { …; return; }} <b>直接早退</b>，所以动画循环每走一步都调一次
+     * {@code show()} 也只是把同一个框保持在屏幕上，不会叠出第二个。这里照搬这个语义。
+     *
+     * <p>更要紧的是它<b>不阻塞</b>：{@code show()} 立刻返回，事件循环照常跑。PC 端早期用
+     * 阻塞式 {@code JOptionPane} 顶替它，在 1ms 定时器的回调里会开嵌套事件循环，
+     * 定时器在嵌套循环里照旧触发、又弹一层，栈无限加深 —— 见 {@link #AotoNextDlg}。
+     */
+    void showDialog(HoloAlertDialog dlg) {
+        if (dlg == null || dlg.isVisible()) return;
+        dialogShower.accept(dlg);
+    }
+
+    /** 「死锁移动」提示框是否已在显示（原版 {@code Dialog.mShowing}）。测试可覆写以模拟。 */
+    protected boolean isLockDlgVisible() {
+        return lockDlg != null && lockDlg.isVisible();
     }
 
     // undo -- 正推
@@ -1006,10 +1169,7 @@ public class myGameView extends JFrame {
 
         // 逆推死锁判断
         if (m_nStep == 0 && myMaps.m_Sets[11] == 1 && mMap.d_Moves >= mMap.m_PicWidth && myLock2(m_iR10, m_iC10)) {
-            int ret = JOptionPane.showConfirmDialog(this, "这一步造成关卡死锁，继续吗？", "死锁移动", JOptionPane.YES_NO_OPTION);
-            if (ret == JOptionPane.NO_OPTION) {
-                bt_UnDo.setChecked(!bt_UnDo.isChecked());
-            }
+            showLockDlg();
         }
     }
 
@@ -2255,10 +2415,13 @@ public class myGameView extends JFrame {
     private boolean myLock(int bRow, int bCol) {
         if (m_iR9 > -1) {
             if (mArray9 != null && isLock_Goal(m_cArray, bRow, bCol, m_nRow, m_nCol)) {
+                lockDlg.setMessage("这一步造成关卡死锁，继续吗？\n（点位不足）");
                 return true;
             } else if (freezeDeadlock != null && freezeDeadlock.isDeadlock(bRow, bCol)) {
+                lockDlg.setMessage("这一步造成关卡死锁，继续吗？\n（僵位冻结）");
                 return true;
             } else if (closedDiagonalLock != null && closedDiagonalLock.isDeadlock(bRow * myMaps.curMap.Cols + bCol)) {
+                lockDlg.setMessage("这一步造成关卡死锁，继续吗？\n（闭锁对角）");
                 return true;
             }
         }
@@ -2268,8 +2431,10 @@ public class myGameView extends JFrame {
     private boolean myLock2(int bRow, int bCol) {
         if (m_iR10 > -1 && mark14 != null) {
             if (mArray9 != null && isLock_Count(bk_cArray, mark14, bRow, bCol, m_nRow2, m_nCol2)) {
+                lockDlg.setMessage("这一步造成关卡死锁，继续吗？\n（点位不足）");
                 return true;
-            } else if (isLock_Net2(bk_cArray, bRow, bCol)) {
+            } else if (isLock_Net2(bk_cArray, bRow, bCol)) {  //「网」型死锁
+                lockDlg.setMessage("这一步造成关卡死锁，继续吗？\n（网位互锁）");
                 return true;
             }
         }
@@ -2427,8 +2592,8 @@ public class myGameView extends JFrame {
                     int n1 = myMaps.m_lstMaps.indexOf(myMaps.curMap);
                     if (n1 > 0) {
                         if (m_bMoved) {
-                            int r = JOptionPane.showConfirmDialog(this, "有状态未保存，坚持更换吗？", "更换关卡", JOptionPane.YES_NO_OPTION);
-                            if (r == JOptionPane.YES_OPTION) myPre(n1 - 1);
+                            // 原版 exitDlg2.show()（myGameView.java:2581 / 5190）—— 非阻塞
+                            showDialog(exitDlg2);
                         } else myPre(n1 - 1);
                     } else {
                         MyToast.showToast(this, "没有了！", MyToast.LENGTH_SHORT);
@@ -2441,8 +2606,8 @@ public class myGameView extends JFrame {
                     int n2 = myMaps.m_lstMaps.indexOf(myMaps.curMap);
                     if (n2 >= 0 && n2 + 1 < myMaps.m_lstMaps.size()) {
                         if (m_bMoved) {
-                            int r = JOptionPane.showConfirmDialog(this, "有状态未保存，坚持更换吗？", "更换关卡", JOptionPane.YES_NO_OPTION);
-                            if (r == JOptionPane.YES_OPTION) myNext(n2 + 1);
+                            // 原版 exitDlg3.show()（myGameView.java:2592 / 5200）—— 非阻塞
+                            showDialog(exitDlg3);
                         } else myNext(n2 + 1);
                     } else {
                         MyToast.showToast(this, "没有了！", MyToast.LENGTH_SHORT);
@@ -4365,17 +4530,44 @@ public class myGameView extends JFrame {
         public AsyncCountBoxsTask(myGameView mView) {
             super();
             mViewReference = new WeakReference<myGameView>(mView);
+
+            // 原版 onPreExecute()：清掉上一轮的逆推死锁数据、复位「无解」标志，并把「更多」染红
+            mView.mark14 = null;
+            mView.mark15 = null;
+            mView.mark16 = null;
+            mView.mArray9 = null;
+            m_bNoSolution = false;
+            mView.bt_More.setTextColor(0xffcc0000);
+
+            // 原版是 execute(myMaps.curMap.Rows, myMaps.curMap.Cols)，尺寸在 UI 线程捕获。
+            // 本方法只在 initMap() 里、且在 EDT 上被调用，所以这里读到的就是本关的尺寸；
+            // 若挪到 doInBackground 里读，后台线程真正起跑时关卡可能已经切走。
+            m_Rows = myMaps.curMap != null ? myMaps.curMap.Rows : 0;
+            m_Cols = myMaps.curMap != null ? myMaps.curMap.Cols : 0;
+        }
+
+        /**
+         * 本任务是否仍是当前关卡的任务。
+         *
+         * <p>{@code SwingWorker.cancel(true)} 在 {@code doInBackground()} <b>已经跑完</b>之后
+         * 是空操作（返回 false，{@code isCancelled()} 保持 false）。而「通关后跳下一关」正好发生在
+         * 上一关算完的瞬间：{@code initMap()} 的取消拦不住 {@code done()} 排队执行，
+         * 于是旧关卡的「这是一个无解的关卡！」会弹在新关卡上，旧关卡的
+         * {@code mark14/15/16}、{@code mArray9} 也会覆盖掉新关卡的死锁数据。
+         * 所以 {@code process()} / {@code done()} 都必须先过这一关。
+         */
+        boolean isCurrent() {
+            myGameView view = mViewReference.get();
+            return view != null && view.mTask == this;
         }
 
         @Override
         protected short[][] doInBackground() {
             myGameView view = mViewReference.get();
-            if (view == null || myMaps.curMap == null) return null;
+            if (view == null) return null;
+            if (m_Rows <= 0 || m_Cols <= 0) return null;  // 尺寸取自构造器；为 0 说明当时没有关卡
 
             try {
-                m_Rows = myMaps.curMap.Rows;
-                m_Cols = myMaps.curMap.Cols;
-
                 int mRow = view.m_nRow;
                 int mCol = view.m_nCol;
 
@@ -4443,6 +4635,10 @@ public class myGameView extends JFrame {
                     }
                 }
 
+                // 原版此处是 publishProgress()：无解提醒要在扫描途中就发出去（onProgressUpdate），
+                // 而不是等整个任务算完。原先挂在 done() 里，等于推迟了一整轮，
+                // 正好落在「通关→跳下一关」之后，就弹在新关卡上了。
+                publish();
                 view.mark15 = mk15;
                 view.mark16 = mk16;
 
@@ -4471,26 +4667,50 @@ public class myGameView extends JFrame {
             return mk14;
         }
 
+        /**
+         * 原版 {@code onProgressUpdate()}：扫描途中一旦发现「箱子被冻死且不在目标位」就提醒一次，
+         * 提醒完立刻复位 {@code m_bNoSolution}，所以同一个任务不会再提醒第二次。
+         *
+         * <p>原版 {@code myGameView.java:5598-5600}：
+         * {@code new Builder(this, THEME_HOLO_DARK).setTitle("提醒")
+         * .setMessage("这是一个无解的关卡！").setPositiveButton("确定", null)
+         * .setCancelable(false).create().show();} —— {@code show()} 不阻塞。
+         *
+         * <p>⚠️ 这里原先是裸的 {@code new JOptionPane(…).createDialog(…) + setVisible(true)}，
+         * 两个问题：① 它是<b>模态</b>框，而 {@code process()} 是 SwingWorker 在 EDT 上的回调 ——
+         * 模态框会在 EDT 上开嵌套事件循环，期间 {@code publish()} 派发过来的后续
+         * {@code process()} 会在<b>上一层框内部</b>重入并再弹一层；② 裸 JOptionPane 的按钮是
+         * 英文 "OK"，与原版的「确定」不符。现在改成原版那一份。
+         */
+        @Override
+        protected void process(java.util.List<Void> chunks) {
+            myGameView view = mViewReference.get();
+            if (view == null || !isCurrent()) return;  // 已切关：旧关卡的提醒不能弹在新关卡上
+            if (m_bNoSolution) {
+                m_bNoSolution = false;
+                HoloAlertDialog dlg = HoloAlertDialog.createNonModal(view, "提醒");
+                dlg.setMessage("这是一个无解的关卡！");
+                dlg.addButton("确定", null);
+                view.dialogShower.accept(dlg);
+            }
+        }
+
         @Override
         protected void done() {
             myGameView view = mViewReference.get();
             if (view == null) return;
-            if (isCancelled()) {
-                view.mark14 = null;
-                view.mark15 = null;
-                view.mark16 = null;
-                view.mArray9 = null;
-                return;
-            }
+
+            // 已被 initMap() 换成新任务（或 myStop() 置空）：本任务的结果属于上一关，一律丢弃 ——
+            // 既不写 mark14/15/16、mArray9（否则新关卡会拿到旧关卡的死锁数据而误报），也不弹提醒。
+            if (!isCurrent()) return;
+            if (isCancelled()) return;
+
             try {
                 short[][] mk = get();
                 view.mark14 = mk;
                 view.mArray9 = mArray;
             } catch (Throwable ignored) { }
 
-            if (m_bNoSolution) {
-                JOptionPane.showMessageDialog(view, "这是一个无解的关卡！", "提醒", JOptionPane.WARNING_MESSAGE);
-            }
             view.bt_More.setTextColor(0xffffffff);
         }
 

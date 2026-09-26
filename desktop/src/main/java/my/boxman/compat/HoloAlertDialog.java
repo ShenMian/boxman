@@ -57,6 +57,12 @@ import java.awt.event.KeyEvent;
  * {@code layout_gravity="start/center_horizontal/end"} 在水平 {@code LinearLayout} 里
  * 只取竖直分量（{@code layoutHorizontal} 用 {@code Gravity.VERTICAL_GRAVITY_MASK} 取掩码），
  * 水平分量是**无效**的，所以不必按它去靠左/靠右摆。
+ *
+ * <h3>⚠️ 模态 vs 非模态</h3>
+ * <p>原版 {@code AlertDialog.show()} 一律<b>不阻塞</b>。PC 端把一部分调用点写成了
+ * {@code if (dlg.show() == YES)} 的模态用法 —— 对「由按钮事件触发、弹完就等用户」的框
+ * 还能凑合，但对<b>定时器动画循环里</b>弹的框（{@code myGameView} 的「死锁移动」）会
+ * 层层嵌套事件循环直到卡死。需要原版语义时用 {@link #createNonModal}。
  */
 public class HoloAlertDialog extends JDialog {
 
@@ -151,8 +157,38 @@ public class HoloAlertDialog extends JDialog {
         return new HoloAlertDialog(owner, title);
     }
 
+    /**
+     * 构造一个**非模态**的 Holo 对话框 —— 这才是原版 {@code AlertDialog} 的真实语义。
+     *
+     * <p>原版 Android 的 {@code AlertDialog.show()} 是<b>不阻塞</b>的：{@code show()} 立刻返回，
+     * 事件循环照常跑，用户点按钮时才走监听器回调。PC 端早期为了迁就
+     * {@code if (dlg.show() == YES)} 这种写法把它们做成了模态框，这在
+     * <b>由定时器驱动的动画循环里</b>会直接卡死：
+     *
+     * <ol>
+     *   <li>{@code myTimer1}（1ms 一次性）触发 {@code UpData1()}，动画推进到某一格后
+     *       判定「这一步造成关卡死锁」；</li>
+     *   <li>模态框在 EDT 上开一个<b>嵌套事件循环</b>；</li>
+     *   <li>那个 1ms 定时器在嵌套循环里照旧触发 → 动画继续跑完一步 → 又满足死锁条件
+     *       → 在<b>上一层模态框内部</b>再弹一层；</li>
+     *   <li>层层嵌套、栈不断加深，界面表现为「点了按钮就卡死」。</li>
+     * </ol>
+     *
+     * <p>原版不会这样，正是因为 {@code show()} 不阻塞 —— 而且 Android 的
+     * {@code Dialog.show()} 在已经显示时会 {@code if (mShowing) return;} 直接早退，
+     * 所以动画每走一步都调 {@code show()} 也只是把同一个框保持在屏幕上。
+     * 这两个语义在本类和 {@code myGameView#showLockDlg()} 里都复刻了。
+     */
+    public static HoloAlertDialog createNonModal(Frame owner, String title) {
+        return new HoloAlertDialog(owner, title, false);
+    }
+
     protected HoloAlertDialog(Frame owner, String title) {
-        super(owner, true);
+        this(owner, title, true);
+    }
+
+    protected HoloAlertDialog(Frame owner, String title, boolean modal) {
+        super(owner, modal);
         this.dialogTitle = title == null ? "" : title;
 
         // 原版 AlertDialog 没有系统标题栏，标题画在面板内部
@@ -260,17 +296,44 @@ public class HoloAlertDialog extends JDialog {
     }
 
     /**
+     * 等价于原版 {@code AlertDialog.setMessage(CharSequence)}：设置/更新正文。
+     *
+     * <p>原版 {@code AlertController.setMessage()} 只是改 {@code TextView#message} 的文字，
+     * 而对话框窗口是 {@code wrap_content}，所以正文行数一变窗口会跟着重新测量。
+     * 这里复刻同样的语义：正文变化后把「已定尺寸」标记清掉，下次 {@code setVisible(true)}
+     * 重新量一次；若此刻正显示着，就地重新测量（对应 {@code TextView.setText()} 触发的
+     * {@code requestLayout()}）。
+     *
+     * <p>「死锁移动」提示框靠它把具体原因写进正文 —— 见 {@code myGameView#myLock} /
+     * {@code myLock2}，原版 {@code myGameView.java:2394-2414}。
+     */
+    public void setMessage(String message) {
+        setContentView(HoloMessageDialog.messageBody(message));
+        sized = false;
+        if (isVisible()) {
+            applyHoloSize();
+        }
+    }
+
+    /**
      * 追加一个按钮。原版按钮栏顺序是 {@code button2 / button3 / button1}（{@code button1} 在最右），
      * 每个按钮 {@code layout_weight="1"}，因此按钮**等分铺满**整条按钮栏。
      *
-     * <p>⚠️ {@code action} 为 {@code null} <b>不等于「点了没反应」</b>：原版
-     * {@code AlertDialog} 的按钮在 {@code onClick()} 里无条件先 {@code dismiss()}，
-     * 监听器只是可选的附加动作。所以 {@code .setNegativeButton("取消", null)}
-     * 是「点了就关」而不是死按钮 —— 这里用 {@code dispose()} 兜底（原先写成空动作，
-     * {@code 取消} 按钮点不动，是个已修的移植 bug）。
+     * <p><b>点击后一律关闭对话框</b>（先跑 {@code action}，再 {@code dispose()}）——
+     * 这是原版 {@code AlertController.mButtonHandler} 的语义：它先
+     * {@code m.sendToTarget()} 派发监听器，随后**无条件**再发一条
+     * {@code MSG_DISMISS_DIALOG}。所以：
+     * <ul>
+     *   <li>{@code .setNegativeButton("取消", null)} 是「点了就关」，不是死按钮；</li>
+     *   <li>传了 {@code action} 的按钮**同样会关**，{@code action} 只是「关闭前额外做的事」。</li>
+     * </ul>
+     *
+     * <p>⚠️ 若某个按钮确实需要「校验失败就留在原地」（原版只能靠 {@code setOnKeyListener}
+     * 之类自行 {@code dismiss()} 实现），**不要**把这个语义改回来 —— 应该让该按钮的
+     * {@code action} 走别的入口（见 {@code BoxManPC.reName()} 的 Enter 分支）。
      *
      * @param text   按钮文字
-     * @param action 点击后的动作；{@code null} 表示只关闭对话框
+     * @param action 关闭前执行的动作；{@code null} 表示只关闭对话框
      */
     public JButton addButton(String text, final Runnable action) {
         JButton b = new JButton(text) {
@@ -298,10 +361,20 @@ public class HoloAlertDialog extends JDialog {
         b.setPreferredSize(new Dimension(BUTTON_MIN_WIDTH, BUTTON_BAR_HEIGHT));
         b.setMaximumSize(new Dimension(Integer.MAX_VALUE, BUTTON_BAR_HEIGHT));
         b.addActionListener(e -> {
-            // 原版 AlertDialog 的按钮无条件先 dismiss，监听器只是可选的附加动作
-            if (action != null) {
-                action.run();
-            } else {
+            // 原版 AlertController.mButtonHandler：
+            //     if (m != null) m.sendToTarget();                                    // 先派发监听器
+            //     mHandler.obtainMessage(MSG_DISMISS_DIALOG, mDialog).sendToTarget(); // 再**无条件**关闭
+            //
+            // ⚠️ 关闭与 action 是否为 null **无关**。这里原先写成 if/else（有 action 就只跑 action、
+            // 不关框），于是「凡是传了 action 的按钮全都关不掉」—— 用户报的
+            // 「点『是』不消失，只是一直跳转到下一个关卡」就是这个。
+            // 顺带也解释了为什么全项目几十处调用点都在 action 里手写一遍 dlg.dispose()：
+            // 那是在绕开这个 bug，现在都是冗余但无害的。
+            try {
+                if (action != null) {
+                    action.run();
+                }
+            } finally {
                 dispose();
             }
         });
