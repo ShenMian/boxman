@@ -13,6 +13,7 @@ import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Typeface;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -376,7 +377,13 @@ public class myEditView extends Activity {
 
         mWhich = -1;
         IntentFilter filter = new IntentFilter(myAbout2.action);
-        registerReceiver(broadcastReceiver, filter);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(broadcastReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(broadcastReceiver, filter);   // this cannot be used for Android 15+
+        }
+
     }
 
     //载入关卡数据

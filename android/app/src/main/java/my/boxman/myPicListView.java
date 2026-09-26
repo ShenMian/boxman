@@ -144,7 +144,7 @@ public class myPicListView extends Activity implements OnScrollListener {
 				final String[] m_menu = new String[] {
 					"快手默认位置",
 					"QQ 图片接收文件夹",
-					myMaps.myPathList[2],
+					"系统截图",
 					myMaps.myPathList[3],
 					myMaps.myPathList[4]
 				};

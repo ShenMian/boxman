@@ -1616,12 +1616,12 @@ public class myGameView extends Activity {
                 mMap.m_lParityBrightnessShade = false;  // 奇偶位明暗度调整
 
                 //计数控制
-                mMap.m_Count[0] = 0;  //正推箱子数
-                mMap.m_Count[1] = 0;  //正推目标数
-                mMap.m_Count[2] = 0;  //正推完成数
-                mMap.m_Count[3] = 0;  //逆推箱子数
-                mMap.m_Count[4] = 0;  //逆推目标数
-                mMap.m_Count[5] = 0;  //逆推完成数
+                mMap.m_Count[0] = 0;  //正推箱子数  | Number of boxes in the forward direction
+                mMap.m_Count[1] = 0;  //正推目标数  | Number of goals in the forward direction
+                mMap.m_Count[2] = 0;  //正推完成数  | Number of boxes on goals in the forward direction
+                mMap.m_Count[3] = 0;  //逆推箱子数  | Number of boxes in the reverse direction
+                mMap.m_Count[4] = 0;  //逆推目标数  | Number of goals in the reverse direction
+                mMap.m_Count[5] = 0;  //逆推完成数  | Number of boxes on goals in the reverse direction
                 for (int i = 0; i < m_cArray.length; i++)
                     for (int j = 0; j < m_cArray[0].length; j++) {
                         m_selArray[i][j] = 0;

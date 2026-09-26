@@ -439,6 +439,12 @@ public class myFindViewMap extends View {
 
         canvas.save();
         mCurrentMatrix.getValues(values);
+
+        values[Matrix.MSCALE_X] = values[Matrix.MSCALE_Y] =
+                ((int) (m_PicWidth * values[Matrix.MSCALE_X])) / (float) m_PicWidth; // scale so the images are scaled without fractions
+        values[Matrix.MTRANS_X] = (int) values[Matrix.MTRANS_X];                     // translate without fractions
+        values[Matrix.MTRANS_Y] = (int) values[Matrix.MTRANS_Y];                     // translate without fractions
+
         mMapMatrix.setValues(values);
         m_fTop = values[Matrix.MTRANS_Y];
         m_fLeft = values[Matrix.MTRANS_X];

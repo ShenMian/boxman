@@ -1,19 +1,20 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 33
-    buildToolsVersion '30.0.3'
+    compileSdkVersion 35
+    buildToolsVersion '35.0.0'
     defaultConfig {
         applicationId 'my.boxman'
         minSdkVersion 21
-//        targetSdkVersion 21
+        targetSdkVersion 34
         versionCode 9
-        versionName "9.99u~"
+        versionName "9.99u3"
     }
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
+            signingConfig signingConfigs.debug
         }
     }
     android.applicationVariants.all {
@@ -26,13 +27,14 @@ android {
     productFlavors {
     }
     useLibrary 'org.apache.http.legacy'   //解决导入org.apache问题
-    lintOptions {   //解决 Generate signed Bundle or APK  打包时报错问题
-        checkReleaseBuilds false
-        abortOnError false
-    }
     compileOptions {
         targetCompatibility JavaVersion.VERSION_1_8
         sourceCompatibility JavaVersion.VERSION_1_8
+    }
+    namespace 'my.boxman'
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
     }
 }
 
@@ -43,4 +45,6 @@ def releaseTime() {
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation files('libs/json-simple-1.1.jar')
+    implementation "androidx.core:core-ktx:+"
+    implementation 'com.android.support:support-annotations:28.0.0'
 }

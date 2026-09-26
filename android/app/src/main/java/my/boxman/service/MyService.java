@@ -24,11 +24,11 @@ public class MyService extends Service {
 	private void init(Intent intent,int startId)
 	{
 		Log.e("service","startService");
-		Notification notification = new Notification();
-		notification.flags = Notification.FLAG_ONGOING_EVENT;
-		notification.flags |= Notification.FLAG_NO_CLEAR;
-		notification.flags |= Notification.FLAG_FOREGROUND_SERVICE;
-		startForeground(101, notification);
+//		Notification notification = new Notification();
+//		notification.flags = Notification.FLAG_ONGOING_EVENT;
+//		notification.flags |= Notification.FLAG_NO_CLEAR;
+//		notification.flags |= Notification.FLAG_FOREGROUND_SERVICE;
+//		startForeground(101, notification);
 	}
 
 	@Override

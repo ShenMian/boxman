@@ -8,13 +8,16 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnClickListener;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
+import android.provider.Settings;
 import android.text.InputType;
 import android.text.SpannableString;
 import android.text.Spanned;
@@ -43,6 +46,9 @@ import android.widget.RadioGroup;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
@@ -65,6 +71,9 @@ import my.boxman.service.MyService;
 
 public class BoxMan extends Activity implements mySplitLevelsFragment.SplitStatusUpdate, myQueryFragment.FindStatusUpdate, myExportFragment.ExportStatusUpdate {
 	Intent serviceIntent;
+
+	private static final int REQUEST_PERMISSIONS = 1;
+	private static final int REQUEST_MANAGE_EXTERNAL_STORAGE = 2;
 
 	ExpandableListView expView;
 	MyExpandableListView expAdapter;
@@ -90,18 +99,81 @@ public class BoxMan extends Activity implements mySplitLevelsFragment.SplitStatu
 	myMaps.MyAdapter mAdapter;
 	ArrayList<Long> mySets;   //关卡集id
 
+	// Android 11 and higher
+	@Override
+	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+		super.onActivityResult(requestCode, resultCode, data);
+		if (requestCode == REQUEST_MANAGE_EXTERNAL_STORAGE) {
+			if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+				if (Environment.isExternalStorageManager()) {
+					continueWithPermissions();
+				} else {
+					// Permission denied, inform the user
+					Toast.makeText(this, "Program cannot run without Manage External Storage permission!", Toast.LENGTH_SHORT).show();
+				}
+			}
+		}
+	}
+
+	// Android below 11
+	@Override
+	public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+		super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+		if(requestCode == REQUEST_PERMISSIONS){
+			if(grantResults.length > 0){
+				boolean write = grantResults[0] == PackageManager.PERMISSION_GRANTED;
+				boolean read = grantResults[1] == PackageManager.PERMISSION_GRANTED;
+
+				if(read && write){
+					continueWithPermissions();
+				}else{
+					Toast.makeText(this, "Program cannot run without Manage External Storage permission!", Toast.LENGTH_SHORT).show();
+				}
+			}
+		}
+	}
+
 	//建立地图列表类
 	protected void onCreate(Bundle savedInstanceState) {
 
 		super.onCreate(savedInstanceState);
 
+		// added code for request permission
+		if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+			if (!Environment.isExternalStorageManager()) {
+				// Request the MANAGE_EXTERNAL_STORAGE permission
+				Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+				startActivityForResult(intent, REQUEST_MANAGE_EXTERNAL_STORAGE);
+			} else {
+				continueWithPermissions();    // Permission is already granted
+			}
+		} else {
+			// For devices below Android 11, request READ/WRITE permissions
+			if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED ||
+					ContextCompat.checkSelfPermission(this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+				ActivityCompat.requestPermissions(this,
+						new String[]{ android.Manifest.permission.READ_EXTERNAL_STORAGE, android.Manifest.permission.WRITE_EXTERNAL_STORAGE},
+						REQUEST_PERMISSIONS);
+			} else {
+				continueWithPermissions();    // Permission is already granted
+			}
+		}
+	}
+
+	void continueWithPermissions() {
+
 		setContentView(R.layout.main);
+
+//		groups = new String[] { getString(R.string.beginner_puzzles), getString(R.string.advanced_puzzles), getString(R.string.tricky_puzzles), getString(R.string.additional_puzzles) };
 
 		myMaps.res = getResources();
 		myMaps.m_Sets = new int[42]; //系统参数设置数组
 
 		//路径设置
-		myMaps.sRoot = Environment.getExternalStorageDirectory().getPath();
+		myMaps.sRoot = Environment.getExternalStorageDirectory().getPath();  // this is the orginal code, it creates the boxman folder under  /sdcard/
+//		myMaps.sRoot = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS).getPath(); // this folder is deleted when the app is uninstalled
+//		myMaps.sRoot = getExternalFilesDir(null).getPath();   // this creates the boxman folder under /Android/data/my.boxman/files/
+//		myMaps.sRoot = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).getPath();   // this creates the boxman folder under  /sdcard/Documents/
 		myMaps.sPath = new StringBuilder("/推箱快手/").toString();
 		loadSets();  //读入系统设置
         myMaps.myPathList[0] = myMaps.sPath + "关卡图/";
@@ -287,6 +359,7 @@ public class BoxMan extends Activity implements mySplitLevelsFragment.SplitStatu
 		//用提高APP服务级别的方式，避免因相机崩溃的问题
 		serviceIntent = new Intent(this, MyService.class);
 		startService(serviceIntent);
+
 	}
 
 	//加载 Gif 皮肤
@@ -771,7 +844,7 @@ public class BoxMan extends Activity implements mySplitLevelsFragment.SplitStatu
 		myMaps.mMatchDate1 = file.get("比赛", "mmatchdate1", "").toString();
 		myMaps.mMatchDate2 = file.get("比赛", "mmatchdate2", "").toString();
 
-		myMaps.myPathList[2] = file.get("识别", "sPicPath", "").toString();
+//		myMaps.myPathList[2] = file.get("识别", "sPicPath", "").toString();
 		myMaps.myPathList[3] = file.get("识别", "sPicPath2", "").toString();
 		myMaps.myPathList[4] = file.get("识别", "sPicPath3", "").toString();
 
@@ -841,7 +914,7 @@ public class BoxMan extends Activity implements mySplitLevelsFragment.SplitStatu
 		file.set("比赛", "mmatchdate1", myMaps.mMatchDate1);
 		file.set("比赛", "mmatchdate2", myMaps.mMatchDate2);
 
-		file.set("识别", "sPicPath", myMaps.myPathList[2]);
+//		file.set("识别", "sPicPath", myMaps.myPathList[2]);
 		file.set("识别", "sPicPath2", myMaps.myPathList[3]);
 		file.set("识别", "sPicPath3", myMaps.myPathList[4]);
 
@@ -1959,10 +2032,12 @@ public class BoxMan extends Activity implements mySplitLevelsFragment.SplitStatu
 
 	@Override
 	protected void onStart() {
-		setTitle("推箱快手 " + mySQLite.m_SQL.count_Level());
-		myMaps.curJi = false;
-		expAdapter.notifyDataSetChanged();
-		expView.expandGroup(myMaps.m_Sets[0]);
+		if(myMaps.sRoot != null && expAdapter != null) {      // may be null if yet the user hasn't granted permissions
+			setTitle(getString(R.string.app_name) + " " + mySQLite.m_SQL.count_Level());
+			myMaps.curJi = false;
+			expAdapter.notifyDataSetChanged();
+			expView.expandGroup(myMaps.m_Sets[0]);
+		}
 		super.onStart();
 	}
 
@@ -1975,7 +2050,9 @@ public class BoxMan extends Activity implements mySplitLevelsFragment.SplitStatu
 	@Override
 	protected void onResume() {
 		super.onResume();
-		expAdapter.notifyDataSetChanged();
+		if(expAdapter != null) {
+			expAdapter.notifyDataSetChanged();
+		}
 	}
 
 	public boolean onKeyUp(int keyCode, KeyEvent event) {

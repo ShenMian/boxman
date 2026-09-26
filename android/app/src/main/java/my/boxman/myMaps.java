@@ -63,7 +63,7 @@ public class myMaps {
 	static String[] myPathList = {  //关卡截图根目录列表
 			"",                         // 默认位置
 			"/tencent/qq_images/",      // QQ 图片接收位置
-			"/",                        // 自定义 1
+			"/Pictures/Screenshots/",   // 自定义 1
 			"/",                        // 自定义 2
 			"/"                         // 自定义 3
 	};

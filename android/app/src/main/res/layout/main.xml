@@ -2,16 +2,16 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
 	android:layout_width="fill_parent"
 	android:layout_height="fill_parent"
-	android:orientation="vertical"
 	android:background="#ff004040"
-	android:keepScreenOn="true">
+    android:fitsSystemWindows="true"
+	android:keepScreenOn="true"
+	android:orientation="vertical">
 
-    <ExpandableListView
+	<ExpandableListView
 		android:id="@+id/explist"
 		android:layout_width="fill_parent"
 		android:layout_height="fill_parent"
-		android:listSelector="#ff0064aa"
-		>
-	</ExpandableListView>
+		android:listSelector="#ff0064aa">
+   </ExpandableListView>
 
 </LinearLayout> 
