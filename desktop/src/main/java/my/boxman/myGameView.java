@@ -586,13 +586,18 @@ public class myGameView extends JFrame {
         });
 
         // 瞬移
+        // 原版 myGameView.java:1551-1554：先按上次的开关状态 setChecked，再显式刷一次底色
+        //（setChecked 在挂监听器之前调，不会触发回调）。
         bt_IM.setChecked(myMaps.m_Sets[6] == 1);
+        bt_IM.setCheckedBackground(myMaps.m_Sets[6] == 1);
         bt_IM.addItemListener(e -> {
             mMap.d_Moves = mMap.m_PicWidth;
             if (mMap.m_lShowAnsInf) mMap.m_lShowAnsInf = false;
             if (bt_IM.isChecked()) {
+                bt_IM.setCheckedBackground(true);    // 原版：setBackgroundColor(0xff445566)
                 myMaps.m_Sets[6] = 1;
             } else {
+                bt_IM.setCheckedBackground(false);   // 原版：setBackgroundColor(0xff778899)
                 myMaps.m_Sets[6] = 0;
             }
         });
@@ -610,12 +615,14 @@ public class myGameView extends JFrame {
             m_bYanshi2 = false;
             m_bACT_ERROR = false;
             if (bt_BK.isChecked()) {
+                bt_BK.setCheckedBackground(true);    // 原版：setBackgroundColor(0xff445566)
                 if (m_nRow2 < 0 || m_nCol2 < 0) {
                     mMap.m_iR = m_nRow2;
                     mMap.m_iC = m_nCol2;
                     MyToast.showToast(this, "需要给出仓管员的位置！", MyToast.LENGTH_SHORT);
                 }
             } else {
+                bt_BK.setCheckedBackground(false);   // 原版：setBackgroundColor(0xff778899)
                 mMap.m_iR = m_nRow;
                 mMap.m_iC = m_nCol;
             }
@@ -653,10 +660,13 @@ public class myGameView extends JFrame {
             }
 
             if (bt_Sel.isChecked()) {
+                bt_Sel.setCheckedBackground(true);   // 原版：setBackgroundColor(0xff445566)
                 mMap.m_boxCanMove = false;
                 mMap.m_boxNoMoved = false;
                 mMap.m_boxCanMove2 = false;
                 mMap.m_boxNoUsed = false;
+            } else {
+                bt_Sel.setCheckedBackground(false);  // 原版：setBackgroundColor(0xff778899)
             }
             m_bNetLock = false;
             mMap.m_lChangeBK = false;

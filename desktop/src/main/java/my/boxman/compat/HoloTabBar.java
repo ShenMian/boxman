@@ -25,11 +25,19 @@ import java.awt.event.ActionListener;
  * 里放若干 {@code <CheckBox style="@style/tab_style" android:drawableTop="@drawable/xxx" android:text="..."/>}，
  * 每个 CheckBox 都是 {@code layout_width="fill_parent" + layout_weight="1.0"}，即**精确等分整宽**。
  *
- * <p><b>底色是平的。</b>{@code tab_style} 没有 parent（即挂在 {@code Widget.Holo.CompoundButton.CheckBox}
- * 之上），而 AOSP 的 {@code Widget.CompoundButton} 只设了
- * {@code focusable/clickable/textAppearance/textColor/gravity}，**没有 {@code android:background}**
- * —— 加上 {@code tab_style} 的 {@code android:button="@null"}，所以勾选态**没有任何视觉反馈**，
- * 底栏通体就是 RadioGroup 的 {@code #778899}。
+ * <p><b>底色与「按下」效果。</b>底栏通体是 RadioGroup 的 {@code #778899}；其中三个**开关**按钮
+ * —— {@code cb_IM}（瞬移）、{@code cb_BK}（逆推）、{@code cb_Sel}（计数）—— 在选中时由原版代码
+ * 显式改成更深的 {@code #445566}，这就是「按下去」的视觉效果：
+ *
+ * <pre>
+ * // 原版 myGameView.java:1552 / 1561 / 1585 / 1632 等处
+ * if (isChecked) buttonView.setBackgroundColor(0xff445566);
+ * else           buttonView.setBackgroundColor(0xff778899);
+ * </pre>
+ *
+ * 而 {@code cb_TR}（转置，每点一次换一转）、{@code cb_More}（更多，弹菜单）以及
+ * {@code bt_UnDo} / {@code bt_ReDo}（后退 / 前进，靠 {@code setChecked(!isChecked())} 触发）
+ * 都**没有**这一步，所以它们始终是 {@code #778899} —— 别「顺手统一」。
  */
 public final class HoloTabBar {
 
@@ -46,6 +54,13 @@ public final class HoloTabBar {
 
     /** RadioGroup 的 {@code android:background="#ff778899"}。 */
     public static final Color BG = new Color(0x77, 0x88, 0x99);
+    /**
+     * 开关按钮**选中**时的底色：原版 {@code setBackgroundColor(0xff445566)}。
+     * 比 {@link #BG} 更深，即用户看到的「按下去」效果。
+     */
+    public static final Color BG_CHECKED = new Color(0x44, 0x55, 0x66);
+    /** 开关按钮**未选中**时的底色：原版 {@code setBackgroundColor(0xff778899)}，与 {@link #BG} 同值。 */
+    public static final Color BG_UNCHECKED = BG;
     /** 文字色：{@code ?attr/textColorPrimaryDisableOnly} 的启用态 = 纯白。 */
     public static final Color FG = Color.WHITE;
     /**
@@ -197,12 +212,30 @@ public final class HoloTabBar {
             setSelected(b);
         }
 
+        /**
+         * 按选中态刷底色 —— 等价于原版开关按钮监听器里那两行
+         * {@code setBackgroundColor(0xff445566)} / {@code setBackgroundColor(0xff778899)}。
+         *
+         * <p>⚠️ <b>不要</b>把这件事塞进 {@link #setChecked(boolean)}：原版只有
+         * {@code cb_IM / cb_BK / cb_Sel} 三个开关会改底色，而 {@code bt_UnDo / bt_ReDo}
+         * 是靠 {@code setChecked(!isChecked())} 触发动作的**瞬时**按钮，它们不该变色。
+         * 由调用方显式调本方法，与原版逐行对应。
+         */
+        public void setCheckedBackground(boolean checked) {
+            setBackgroundColor(checked ? BG_CHECKED : BG_UNCHECKED);
+        }
+
         public void setTextColor(int argb) {
             setForeground(new Color(argb, true));
         }
 
         public void setBackgroundColor(int argb) {
             setBackground(new Color(argb, true));
+        }
+
+        /** 见 {@link #setCheckedBackground(boolean)}。 */
+        public void setBackgroundColor(Color c) {
+            setBackground(c);
         }
 
         public void setOnLongClickListener(ActionListener listener) {

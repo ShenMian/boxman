@@ -2122,4 +2122,471 @@ PC 侧原先是 `GridLayout(1, 8, 4, 4)` + `EmptyBorder(4,4,4,4)` + **纯文字*
 | 尺寸框文字基线 | ~2dp | 由 `getTextBounds()` 的 `rt.height()` 决定，而 PC 的串 `8列8行 [箱:4 标:4]` 含 `[` `]` 下降部、原版串 `10列15行 B-0 G-0` 不含 → 串相关，不是版面错。 |
 | 底栏文字基线 | ~0.5dp | Microsoft YaHei 与 Noto Sans CJK 的 ascent/descent 不同，属字体度量差异（`RENDER_NOTES.md`：不复刻字体瑕疵）。 |
 
-**当前基线：40 个用例类 / 428 个测试用例，全部通过。**
+**当前基线：41 个用例类 / 436 个测试用例，全部通过。**
+
+---
+
+## BUG 修复 —— 「通关后跳下一个未解关卡，可能直接弹出死锁警告」（2026-09-26）
+
+**用户报告**：完成关卡后跳转到下一个未解的关卡，可能直接弹出死锁警告。
+
+### 1. 定位
+
+「死锁警告」= `myGameView` 里唯一的警告框 `JOptionPane`「这是一个无解的关卡！」，
+原先挂在后台任务 `AsyncCountBoxsTask.done()` 的末尾。
+
+跳关链路：`UpData1()`（`myGameView.java:749`）→ `myClearance()` 判定通关 →
+`JOptionPane.showConfirmDialog("恭喜过关！是否自动打开下一个未解关卡？")` →
+`myMaps.curMap = m_lstMaps.get(k)` → `initMap()`（`:768`）。
+
+`initMap()` 开头**有**取消逻辑（`:1911`）：
+
+```java
+if (mTask != null) { mTask.cancel(true); mTask = null; }
+```
+
+所以问题不在「忘了取消」，而在 **`SwingWorker.cancel(true)` 在 `doInBackground()` 已经跑完之后
+是空操作**（返回 `false`，`isCancelled()` 保持 `false`）。而「通关 → 跳关」正好发生在
+上一关刚算完的瞬间，于是旧任务的 `done()` 照常执行，造成两个后果：
+
+1. **弹错提醒**：旧关卡的「这是一个无解的关卡！」弹在了新关卡上；
+2. **污染数据**：`done()` 把旧关卡的 `mark14/15/16`、`mArray9` 写进视图，覆盖掉新关卡的死锁
+   数据 —— 随后 `myLock()`（`:2255`）就会拿旧数据误判死锁。
+
+### 2. 与原版的差异（这才是根因）
+
+原版把提醒放在 **`onProgressUpdate()`**，由 `doInBackground()` 中途的 `publishProgress()`
+（原版 `myGameView.java:5559`）触发 —— 提醒在**本关还显示在屏幕上时**就发出去了，
+不会漂移到下一关；并且提醒后立刻 `m_bNoSolution = false`（原版 `:5601`）。
+
+端口这边把提醒挪到了 `done()` 末尾，等于**推迟了一整轮**，正好落在跳关之后。
+另有一处同类隐患：地图尺寸原先在 `doInBackground()` 里读 `myMaps.curMap.Rows/Cols`，
+而后台线程真正起跑时关卡可能已经切走 —— 会拿**旧行数**去读**新地图**。
+原版是 `execute(myMaps.curMap.Rows, myMaps.curMap.Cols)`，尺寸在 UI 线程捕获。
+
+### 3. 修法
+
+| # | 改动 | 对应原版 |
+|---|---|---|
+| ① | `doInBackground()` 开头改 `publish()` | `publishProgress()`（`:5559`） |
+| ② | 新增 `process()` 弹提醒 + 复位 `m_bNoSolution` | `onProgressUpdate()`（`:5595`） |
+| ③ | 新增 `isCurrent()` 闸门，`process()` / `done()` 都要先过 | 无对应（端口补的，见下） |
+| ④ | 尺寸改到**构造器**（EDT 上）捕获 | `execute(rows, cols)` |
+| ⑤ | 构造器里清 `mark14/15/16`、`mArray9`、复位标志、`bt_More` 染红 `0xffcc0000` | `onPreExecute()`（`:5467`） |
+
+③ 是端口必须补的：原版的 `onProgressUpdate` / `onPostExecute` 也会被旧任务送达，
+但它没有身份判据；端口这边 `done()` 要写共享字段，加一道
+`view.mTask == this` 的闸门才能既防弹错提醒、又防污染数据。
+
+### 4. 顺带补上的保真项
+
+- `bt_More` 在任务进行中染红 `0xffcc0000`、结束时恢复 `0xffffffff` —— 原版
+  `onPreExecute()` / `onPostExecute()` 都有，端口原先只在 `done()` 里恢复了白色，
+  **红的这一半是缺的**。
+- 给 `myGameView` 加了 `dialogShower` 测试缝（沿用阶段 G ⑦ 立的规矩，
+  见 `TEST_NOTES.md`），否则这条提醒的模态框会把用例挂死。
+
+### 5. 回归测试
+
+**新增 `Phase30StaleTaskGuardTest`（8 个用例）**：切关后旧任务不再是当前任务；
+旧任务不弹提醒；当前任务仍弹且只弹一次；旧任务的 `done()` 不覆盖新关卡的
+`mark14`/`mArray9`；当前任务正常算完后照常写回；尺寸在构造时捕获、切关后不漂移；
+构造任务时清空上一轮数据。
+
+**⚠️ 已实测「撤掉闸门会失败」**：临时去掉 `isCurrent()` 后，
+`testSupersededTaskDoesNotWarn` 与 `testSupersededTaskDoesNotOverwriteLockData`
+两条如期失败（8 完成 / 2 失败），恢复后全绿 —— 即这两条真的锁住了这个 bug。
+
+---
+
+## BUG 修复 —— 「死锁警告弹窗，选『否』直接就卡死」（2026-09-26）
+
+### 1. 现象
+
+在关卡里走一步造成死锁时，会弹出「死锁移动 / 这一步造成关卡死锁，继续吗？」，
+点「否」（撤销移动）之后**整个界面卡死**。
+
+### 2. 根因：模态框 + 1ms 定时器 = 嵌套事件循环无限加深
+
+提示框原先写成了阻塞式的：
+
+```java
+// UpData1() 末尾（旧代码）
+if (m_nStep == 0 && myMaps.m_Sets[11] == 1 && mMap.d_Moves >= mMap.m_PicWidth && myLock(m_iR9, m_iC9)) {
+    int ret = JOptionPane.showConfirmDialog(this, "这一步造成关卡死锁，继续吗？", "死锁移动", JOptionPane.YES_NO_OPTION);
+    if (ret == JOptionPane.NO_OPTION) bt_UnDo.setChecked(!bt_UnDo.isChecked());
+}
+```
+
+而 `UpData1()` / `UpData3()` 是 **`myTimer1` / `myTimer3`（1ms 一次性定时器）驱动的动画循环**
+（`initTimers()`，`desktop/…/myGameView.java:645-668`）：
+
+1. 定时器触发 `UpData1()`，动画推进到一格结束，末尾判定 `myLock(...)` 为真；
+2. `JOptionPane.showConfirmDialog` 在 EDT 上开一个**嵌套事件循环**，一直阻塞到用户点按钮；
+3. 那个 1ms 定时器在嵌套循环里**照旧触发** → `UpData1()` 重入 → 动画跑完一步
+   → 又满足死锁条件 → 在**上一层模态框内部**再弹一层；
+4. 层层嵌套、栈不断加深 —— 用户看到的就是「点了按钮就卡死」。
+
+### 3. 与原版的差异
+
+原版 `myGameView.java:1315-1325` 是**建一次、之后只 `setMessage()` + `show()`**：
+
+```java
+Builder dlg4 = new Builder(this);
+dlg4.setTitle("死锁移动").setMessage("这一步造成关卡死锁，继续吗？")
+    .setCancelable(false).setNegativeButton("继续", null)
+    .setPositiveButton("撤销移动", (a, b) -> bt_UnDo.setChecked(!bt_UnDo.isChecked()));
+lockDlg = dlg4.create();
+```
+
+调用点只有 `lockDlg.show()`（原版 `:435` / `:561`）。关键在两点：
+
+| 原版语义 | 说明 |
+|---|---|
+| `AlertDialog.show()` **不阻塞** | 立刻返回，事件循环照常跑；用户点按钮时走监听器回调 |
+| `Dialog.show()` 已显示时**早退** | Android `Dialog.show()` 开头 `if (mShowing) { …; return; }` —— 动画每走一步都调一次 `show()` 也只是把同一个框保持在屏幕上 |
+
+端口把这两条**都丢了**：改成了模态框（丢 ①），而且每次判定为真都新建一个
+`JOptionPane`（丢 ②）。所以模态 + 定时器重入 → 卡死。
+
+### 4. 修法
+
+| # | 改动 | 对应原版 |
+|---|---|---|
+| ① | `compat/HoloAlertDialog` 新增 `createNonModal(Frame, String)`（原 `create` 仍是模态，不动） | `AlertDialog` 的真实语义 |
+| ② | `compat/HoloAlertDialog` 新增 `setMessage(String)`：换正文、清 `sized` 标记，已显示则就地重新测量 | `AlertController.setMessage()` + `wrap_content` 重排 |
+| ③ | `myGameView` 加字段 `lockDlg`，在 `setupButtonEvents()` 开头**建一次** | `dlg4.create()`（`:1325`） |
+| ④ | 按钮「继续」（negative，`null` → 只关）+「撤销移动」（positive → `dispose()` 再 `bt_UnDo` 取反），并把 positive 设为默认焦点按钮 | `setNegativeButton` / `setPositiveButton` / `requestFocusForDefaultButton` |
+| ⑤ | 新增 `showLockDlg()`：`isLockDlgVisible()` 为真则早退，否则走 `dialogShower` 缝 | `Dialog.show()` 的 `mShowing` 早退 |
+| ⑥ | `UpData1()` / `UpData3()` 两处判定点改调 `showLockDlg()` | `lockDlg.show()`（`:435` / `:561`） |
+
+### 5. 顺带补上的保真项
+
+原版 `myLock()` / `myLock2()`（`myGameView.java:2390-2419`）会按**具体原因**改正文，
+端口原先只弹一句干巴巴的「这一步造成关卡死锁，继续吗？」—— 现已补齐：
+
+| 检测器 | 正文 |
+|---|---|
+| `isLock_Goal`（正推） | `这一步造成关卡死锁，继续吗？\n（点位不足）` |
+| `freezeDeadlock.isDeadlock` | `…\n（僵位冻结）` |
+| `closedDiagonalLock.isDeadlock` | `…\n（闭锁对角）` |
+| `isLock_Count`（逆推） | `…\n（点位不足）` |
+| `isLock_Net2`（逆推「网」型） | `…\n（网位互锁）` |
+
+### 6. 回归测试
+
+**新增 `Phase31LockDialogTest`（13 个用例）**：提示框必须非模态；`createNonModal` 与
+`create` 的模态语义各自锁住；标题/按钮文字/按钮顺序/默认焦点按钮与原版 `dlg4` 一致；
+「撤销移动」取反 `bt_UnDo`；两个按钮都无条件先关框；四条原因都写进正文且 `setMessage`
+能覆盖同一个框；提示框只建一次、已显示就不重复弹、走 `dialogShower` 缝；
+源码扫描确认两个判定点不再有 `JOptionPane` 且都调 `showLockDlg()`。
+
+**⚠️ 已实测「把 `createNonModal` 换回 `create` 会失败」**：5 条如期失败
+（`lockDialogMustNotBeModal`、`showGoesThroughTheTestSeam`、`lockDialogIsConstructedOnlyOnce`，
+以及两条直接**因为模态框真的把 EDT 阻塞住而超时**的 —— `alreadyShowingDialogIsNotShownAgain`、
+`bothButtonsDismissTheDialog`），恢复后全绿。
+
+### 7. ⚠️ 同类隐患（**已由 Phase33 处理，见下一节**）
+
+原版 **全部 5 个 AlertDialog 都是「建一次 + 非阻塞 `show()`」**
+（`AotoNextDlg` 恭喜过关、`exitDlg` 退出、`exitDlg2` / `exitDlg3` 更换关卡、`lockDlg` 死锁移动，
+原版 `:1243-1325` 连续 `create()`），端口这边当时仍然全是阻塞式 `JOptionPane`：
+
+| 位置 | 触发源 | 风险 |
+|---|---|---|
+| `:782` / `:840` 恭喜过关 | `UpData1()`（`myTimer1`） | **中** —— 仅当「瞬移 + 演示」同时开着时 `sleepTimer(myTimer1,…)` 才会留一个待触发的定时器 |
+| `:634` 退出 | `windowClosing` | 低（不是定时器驱动） |
+| `:2480` / `:2494` 更换关卡、`:2513` 关闭调试、`:3092` 重新开始 | 按钮 / 菜单事件 | 低 |
+| `:2911` / `:3012` / `:3043-3047` 保存文档提示 | `saveAns` / `saveAns2` | 低 |
+
+死锁提示之所以是唯一必卡的一条，是因为它**每次判定为真都在动画循环里**；
+其余几个要么不在定时器里，要么需要「瞬移 + 演示」同时开。
+
+> **后续（2026-09-26）**：上面这 5 个框已在 Phase33 里全部改成「建一次 + 非模态 + 回调」
+> （`AotoNextDlg` / `exitDlg` / `exitDlg2` / `exitDlg3` 四个 + `lockDlg` 原有），
+> 连带把 `AsyncCountBoxsTask.process()` 的「无解提醒」也换回原版的非模态 Holo 框。
+> 但**只改非模态还不够** —— 还有第二个独立的根因，见下一节。
+> 仍未对齐的阻塞 `JOptionPane`：`:2586` 关闭调试、`:2984` / `:3085` 保存文档、
+> `:3165` 重新开始、`:3621`+ 设置项选择、`:4046` 宏选择。
+
+## BUG 修复 —— 「点击撤销不会撤销，直接卡住」（2026-09-26，真正的根因）
+
+### 1. 现象
+
+用户在上一轮（非模态化）修复后回报：**问题依然存在，点击撤销不会撤销，直接卡住。**
+
+### 2. 定位过程
+
+`Phase33LevelCompleteDialogTest.realTimerFlowDeadlockThenUndoRestoresTheBoard`
+端到端复现（真实 1 ms 定时器 + 真弹框）后，抓到的冻结态是：
+
+```
+busy=true nStep=0 dMoves=50/50 t1run=false edtFree=true unDo=[5,5] reDo=[]
+```
+
+`m_bBusing` 永远停在 `true`，而 `bt_UnDo` 的监听器第 **396** 行是
+`if (m_bBusing) return;` —— 所以「点撤销没反应」。EDT 其实是**响应**的（`edtFree=true`），
+不是真卡死，是动画循环**静默停摆**、忙标志再也没人复位。
+
+决定性二分（同一关卡、同一动作队列，只改 `dialogShower`）：
+
+| 变体 | 定时器响了几次 | 结束时 `m_bBusing` |
+|---|---|---|
+| A：`dialogShower` 只记录、不显示 | 60 | **false** ✅ |
+| B：`dialogShower` 真的 `setVisible(true)` | **59** | **true** ❌ |
+
+**只差一次响铃** —— 弹框让动画循环丢了最后一拍。
+
+### 3. 根因：`javax.swing.Timer` 的 coalesce 竞态
+
+原版 `RefreshHandler1..4.sleep(ms)`（`myGameView.java:168-171` 等）是：
+
+```java
+public void sleep(int m) {
+    removeMessages(0);                        // 撤掉尚未投递的那一拍
+    sendMessageDelayed(obtainMessage(1), m);  // 排新的一拍
+}
+```
+
+Looper 对每个 message 都投递一次，**不存在合并**，所以每一拍必然到达。
+而 `javax.swing.Timer` 默认 `coalesce == true`，JDK 源码里：
+
+```java
+// Timer.post()
+if (notify.compareAndSet(false, true) || !coalesce) { SwingUtilities.invokeLater(doPostEvent); }
+// Timer.DoPostEvent.run()
+if (notify.get()) { fireActionPerformed(...); if (coalesce) cancelEvent(); }   // notify 在这里才清
+```
+
+`notify` 只在**回调返回之后**才被清掉。于是「在定时器自己的回调里重排下一拍」
+（正是 `sleepTimer` 的用法）会踩中这个竞态：
+
+1. 回调执行中 → `notify == true`；
+2. `sleepTimer` 里 `isRunning()` 为 **false** —— 因为 `TimerQueueThread.run()` 在
+   `timer.post()` **之前**就已经 `timer.delayedTimer = null`，所以 `containsTimer()` 为假
+   → **不走 `stop()`** → `notify` 仍是 `true`；
+3. TimerQueue 线程 1 ms 后 `post()` → `compareAndSet(false,true)` **失败**，且 `coalesce`
+   为 `true` → **不投递** → 这一拍被丢掉；
+4. 回调返回 → `cancelEvent()` → `notify = false`。
+
+结果：定时器既不在队列里、`notify` 也是 `false`，**再也不会响**。
+第 ③ 步只要落在第 ④ 步之前（EDT 在回调里停留超过 1 ms）就必然丢拍 ——
+而 `showLockDlg()` 正好紧跟在同一拍的 `sleepTimer()` 之后，`setVisible()` 建窗/定尺寸要几十
+毫秒，EDT 一直停在回调里，所以**弹框必然丢拍**。这就是变体 B 少响一次的原因。
+
+### 4. 修法
+
+`initTimers()` 里对 4 个一次性动画定时器关掉 coalesce：
+
+```java
+myTimer1.setCoalesce(false);   // myTimer2/3/4 同
+```
+
+关掉之后 `post()` 走 `|| !coalesce` 分支，**每次都投递** —— 与 `sendMessageDelayed` 等价。
+`sleepTimer` 本体不动（`stop()` 对应 `removeMessages(0)`，`start()` 对应 `sendMessageDelayed()`）。
+
+验证：变体 A / B 都变成 `fires=60 busy=false`；正常播放的拍数与修复前一致（不加速、不重复）。
+
+### 5. 同类排查（全项目）
+
+| 定时器 | 是否「在回调里重排自己」 | 结论 |
+|---|---|---|
+| `myGameView.myTimer1..4` | **是**（`sleepTimer`） | 本次已修 |
+| `myGameView.mClockTimer`（3000 ms 重复） | 否（重复定时器，由 TimerQueue 自己重排） | 无需改 |
+| `myGameView:261` 500 ms 长按 | 否（由 `mousePressed` 启动） | 无需改 |
+| `myEditView:293` / `myGameViewMap:334` / `myRecogView:862` / `myRecogViewMap:733` 长按 | 否 | 无需改 |
+| `myRecogView.mTimer` | 否（`start()` 一次，回调里只 `Thread.sleep`） | 无需改 |
+| `MyToast.hideTimer` / `HoloProgressDialog:106` | 否 | 无需改 |
+
+### 6. 回归测试（`Phase33LevelCompleteDialogTest`，5 条新增/强化）
+
+- `rearmingFromInsideTheCallbackAlwaysDeliversTheNextTick` —— **根因用例**，用
+  `dialogShower` 里一次 `Thread.sleep(20)` 精确模拟「弹框把 EDT 拖住」，**不依赖图形环境**，
+  任何机器都跑；
+- `realTimerFlowDeadlockThenUndoRestoresTheBoard` —— 端到端：走一步 → 弹死锁提示 →
+  点「撤销移动」→ 箱子必须退回原位；
+- `completingALevelThenJumpingToTheNextOneKeepsUndoWorking` —— 用户报的**完整路径**：
+  通关 → 点「是」跳下一关 → 新关卡走一步死锁 → 弹提示 → 点「撤销移动」必须真撤销；
+- `theFourAnimationTimersDisableCoalescing` —— 静态对偶，锁死 4 个 `setCoalesce(false)`
+  且不误伤 `mClockTimer`；
+- `@After` 补 `win.myStop()` —— 先停 `myTimer1..4` / `mClockTimer` 再 `dispose()`。
+  `dispose()` 不会停 Swing Timer，漏掉这一步会让「上一支视图的定时器」在后续用例里继续回调
+  （踩过一次，表现为「凭空出现一次 `reDo1 dir=7`」）。
+
+**验证**：把 4 行 `setCoalesce(false)` 临时注掉 → 上面 4 条里**恰好 4 条失败**（含端到端那条），
+恢复后全绿。这条链是可信的。
+
+### 7. 基线
+
+**当前基线：43 个用例类 / 466 个测试用例，全部通过**（含新增 4 条 coalesce 相关用例）。
+`clean fatJar` = **16,034,869** 字节。
+
+## BUG 修复 —— 「点『是』不消失，只是一直跳转到下一个关卡」（2026-09-26）
+
+### 1. 现象
+
+用户回报：完成关卡后弹出「恭喜过关！／是否自动打开下一个未解关卡？」，点「是」之后
+**对话框不消失**，而且每点一次就往后跳一个关卡。
+
+### 2. 根因：`HoloAlertDialog.addButton` 把「无条件关闭」写成了 if/else
+
+原版 `AlertController.mButtonHandler` 是：
+
+```java
+if (m != null) { m.sendToTarget(); }                                   // 先派发监听器
+mHandler.obtainMessage(ButtonHandler.MSG_DISMISS_DIALOG, mDialog)      // 再**无条件**关闭
+        .sendToTarget();
+```
+
+也就是说 **`AlertDialog` 的按钮点了就关，与有没有监听器无关**；监听器只是「关闭前额外做的事」。
+
+而端口的 `addButton` 写成了：
+
+```java
+if (action != null) { action.run(); } else { dispose(); }   // ❌ 有 action 就不关
+```
+
+→ **凡传了 `action` 的按钮全都关不掉**。`AotoNextDlg` 的「是」正好是
+「跑动作（跳下一关）但不关框」，于是框永远挂在屏幕上、每点一次再跳一关。
+
+### 3. 为什么一直没被发现
+
+全项目 **55 处 `addButton` 调用点**里，绝大多数都在 `action` 里**手写了一遍 `dlg.dispose()`**
+—— 那正是在绕开这个 bug（`lockDlg` 的「撤销移动」、`myGridView` / `myEditView` /
+`myRecogView` / `HoloChoiceDialog` 等都是），所以它们看起来正常。
+只有 5 处没写，就全中招：
+
+| 位置 | 按钮 | 后果 |
+|---|---|---|
+| `myGameView.java:311` | `AotoNextDlg`「是」 | **用户报的这个** |
+| `myGameView.java:345` | `exitDlg2`「是」 | 换关卡后框不消失 |
+| `myGameView.java:359` | `exitDlg3`「是」 | 同上 |
+| `myGameView.java:3434` | 「关闭调试」「确定」 | 框不消失，压住了后面弹出的状态列表 |
+| `myGameView.java:335` | `exitDlg`「是」 | 里面的 `dispose()` 是 `myGameView.this.dispose()`（视图），不是框 —— 但反正要退出了 |
+
+### 4. 修法（根因）
+
+`HoloAlertDialog.addButton` 的监听器改成「先跑 action，**finally 里无条件 dispose**」，
+与原版 `mButtonHandler` 的顺序一致：
+
+```java
+try {
+    if (action != null) action.run();
+} finally {
+    dispose();
+}
+```
+
+各调用点里手写的 `dlg.dispose()` 从此**冗余但无害**，按最小修改原则**不删**。
+
+### 5. 唯一需要特殊处理的一处：`BoxManPC.reName()`
+
+原版「重命名」有**两条**路径，行为不同：
+
+| 路径 | 原版写法 | 关闭时机 |
+|---|---|---|
+| 「确定」按钮 | `setPositiveButton("确定", listener)`，监听器里**不** dismiss | **无条件关**（靠 AlertDialog 自动关） |
+| 回车 | `setOnKeyListener`，成功才 `di.dismiss(); return true;` | **只在成功时关**，失败留在原地让用户改 |
+
+端口原先把两条都接到同一个「成功才 dispose」的 lambda 上。改为：按钮只传
+`applyRename(...)`（交给 `addButton` 自动关，✓ 对齐「确定」），回车单独判成功才 `dispose()`
+（✓ 对齐 `setOnKeyListener`）。
+
+### 6. 回归测试
+
+- `Phase33.clickingAButtonWithAnActionAlsoClosesTheDialog` —— **行为锁**：传了 action 的按钮
+  必须既执行 action 又关框；`addButton(text, null)` 不能是死按钮；
+- `Phase33.completingALevelThenJumpingToTheNextOneKeepsUndoWorking` 加断言 ——
+  点「是」之后 `AotoNextDlg.isVisible()` 必须为假（直接编码用户那句话）；
+- `Phase33.realTimerFlowDeadlockThenUndoRestoresTheBoard` 加断言 ——
+  点「撤销移动」后 `lockDlg` 必须消失；
+- `Phase25.testNullActionButtonClosesTheDialog` **改写**：原先它锁的是实现字面量
+  `if (action != null) { action.run(); } else { dispose(); }` —— 那正是 bug 本身，
+  等于把缺陷固化成「约定」。现在改成锁语义（不得出现 `} else { dispose(); }`、
+  必须有 `finally { dispose(); }`）。
+
+**验证**：把 `addButton` 临时还原成 if/else → 恰好上面 3 条失败；恢复后全绿。
+
+### 7. 基线
+
+**43 个用例类 / 466 个测试用例，0 失败 0 错误 0 跳过**；`clean fatJar` = **16,034,869** 字节。
+
+
+
+## UI 还原 —— 底栏「瞬移 / 逆推 / 计数」的按下态（2026-09-26）
+
+### 1. 现象
+
+用户回报：游玩界面底部的「瞬移 / 逆推 / 计数」应当有**两种状态**，启用时按钮呈「按下」效果，
+再点一次恢复。
+
+### 2. 定位
+
+原版 `game_view.xml` 的 `main_bottom` 是
+`<RadioGroup android:background="#ff778899">` 里放 8 个
+`<CheckBox style="@style/tab_style" android:drawableTop="@drawable/xxx">`。
+`tab_style` 设了 `android:button="@null"`（去掉勾选框），所以**选中与否只能靠底色表达** ——
+而原版确实在监听器里显式改底色（`myGameView.java`）：
+
+```java
+// 瞬移 cb_IM —— :1551-1554（初始态按上次的开关状态刷）+ :1561/:1564
+bt_IM.setChecked(myMaps.m_Sets[6] == 1);
+if (myMaps.m_Sets[6] == 1) bt_IM.setBackgroundColor(0xff445566);
+else                       bt_IM.setBackgroundColor(0xff778899);
+...
+if (isChecked) { buttonView.setBackgroundColor(0xff445566); myMaps.m_Sets[6] = 1; }
+else           { buttonView.setBackgroundColor(0xff778899); myMaps.m_Sets[6] = 0; }
+// 逆推 cb_BK —— :1585/:1592   计数 cb_Sel —— :1632/:1638，同样两行
+```
+
+端口漏了这一步，底栏一直是平的 —— 与 `HoloTabBar` 类注释里「勾选态**没有任何视觉反馈**」
+那句（**错的**）互为因果。
+
+### 3. 只有这三个按钮变色
+
+| 控件 | 原版是否 `setBackgroundColor` | 说明 |
+|---|---|---|
+| `cb_IM` 瞬移 / `cb_BK` 逆推 / `cb_Sel` 计数 | **是** | 真开关，两态 |
+| `bt_UnDo` 后退 / `bt_ReDo` 前进 | 否 | 靠 `setChecked(!isChecked())` 触发动作的**瞬时**按钮 |
+| `cb_TR` 转置 | 否 | 每点一次换一转（另配长按归零） |
+| `cb_More` 更多 | 否 | 弹选项菜单 |
+
+`myEditView` 的 8 个标签（撤销/重做/剪切/复制/粘贴/变换/保存/更多）也全是瞬时按钮，
+`myEditView.java` 里 `setBackgroundColor` 出现 **0 次** —— 那边不用改。
+
+### 4. 修法
+
+`compat/HoloTabBar` 新增两个常量与一个方法，逐行对应原版那两行：
+
+```java
+public static final Color BG_CHECKED   = new Color(0x44, 0x55, 0x66);  // 0xff445566
+public static final Color BG_UNCHECKED = BG;                          // 0xff778899
+// TabButton
+public void setCheckedBackground(boolean checked) {
+    setBackgroundColor(checked ? BG_CHECKED : BG_UNCHECKED);
+}
+```
+
+`myGameView.setupButtonEvents()` 里 7 处调用（瞬移初始 1 + 三个监听器各 2 个分支），
+位置与原版 `if (isChecked) { … } else { … }` 的分支一一对应。
+
+⚠️ **不要**把刷底色塞进 `TabButton.setChecked()`：`bt_UnDo` / `bt_ReDo` 是靠
+`setChecked(!isChecked())` 触发动作的瞬时按钮，塞进去会让它们闪一下深色（原版不会）。
+
+同时订正 `HoloTabBar` 类注释里「勾选态没有任何视觉反馈」的错误结论。
+
+### 5. 回归测试（新增 `Phase34BottomBarToggleTest`，7 条）
+
+- `theThreeTogglesStartUncheckedAndFlat` —— 初始都是 `#778899`；
+- `checkingAToggleDarkensItsBackgroundAndUncheckingRestoresIt` —— 选中 → `#445566`，取消 → `#778899`；
+- `theTwoStatesAreVisuallyDistinct` —— 两个色值真的不同，且分别等于 `#445566` / `#778899`；
+- `imRestoresItsPressedLookFromTheSavedSetting` —— `m_Sets[6]==1` 时进游戏直接是按下态；
+- `theInstantaneousTabsNeverChangeTheirBackground` —— 后退/前进/转置/更多选中也不变色；
+- `theThreeToggleListenersRefreshTheirBackground` / `setCheckedDoesNotSecretlyChangeTheBackground`
+  —— 源码约定锁。
+
+**验证**：注掉 7 处 `setCheckedBackground(...)` → 恰好 3 条失败；恢复后全绿。
+
+### 6. 基线
+
+**44 个用例类 / 473 个测试用例，0 失败 0 错误 0 跳过**；`clean fatJar` = **16,035,107** 字节。
