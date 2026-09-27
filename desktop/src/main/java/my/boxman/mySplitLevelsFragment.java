@@ -189,6 +189,7 @@ public class mySplitLevelsFragment {
                                 if (!flg || line == null) {             // XSB 块刚开始，或到文档尾
                                     if (line == null && g_Map.length() <= 0) break;  // 到文档尾，且没有解析到 XSB
                                     num[0]++;   // 到文档尾时，会虚增一个数
+                                    boolean levelStored = false;   // 本块是否真的入了一个有效关卡
                                     if (newSet) {   // 当遇到第一个关卡的 XSB 后，说明新的关卡集解析已经开始
                                         if (nd == null)
                                             nd = new mapNode(g_Map.toString(), g_Title.toString(),
@@ -199,6 +200,14 @@ public class mySplitLevelsFragment {
                                                 num[2]++;
                                             } else {
                                                 id = mySQLite.m_SQL.add_L(myMaps.m_Set_id, nd);
+                                                // PC 修正：回填关卡在库里的 id —— inp_Ans 那条链
+                                                // （isAnsOK_and_Case -> isLevelOK）要求 Level_id > 0，
+                                                // 而 mapNode(4 参字符串) 构造器给的是 0。不回填则答案
+                                                // 被静默丢掉：统计里「解析到的答案数」还照常 +1。
+                                                if (id > 0) {
+                                                    nd.Level_id = id;
+                                                    levelStored = true;
+                                                }
                                             }
                                             if (nd.L_CRC_Num < 0 || id <= 0) num[1]++;
                                         }
@@ -209,7 +218,8 @@ public class mySplitLevelsFragment {
                                         }
                                     }
                                     if (sSolution.length() > 0) {   // 有答案尚未保存
-                                        mySQLite.m_SQL.inp_Ans(nd, sSolution.toString());
+                                        // 关卡没送进库时别拿 nd 去存答案（Level_id 恒为 0，必被否掉）
+                                        mySQLite.m_SQL.inp_Ans(levelStored ? nd : null, sSolution.toString());
                                     }
                                     if (line == null) {   // 到文档尾，此关卡集解析结束
                                         newSet = false;
@@ -330,6 +340,7 @@ public class mySplitLevelsFragment {
                         if (!flg || line == null) {
                             if (line == null && g_Map.length() <= 0) break;
                             num[0]++;
+                            boolean levelStored = false;   // 本块是否真的入了一个有效关卡
                             if (num[0] > 1) {
                                 if (nd == null)
                                     nd = new mapNode(g_Map.toString(), g_Title.toString(),
@@ -340,6 +351,14 @@ public class mySplitLevelsFragment {
                                         num[2]++;
                                     } else {
                                         id = mySQLite.m_SQL.add_L(myMaps.m_Set_id, nd);
+                                        // PC 修正：回填关卡在库里的 id —— inp_Ans 那条链
+                                        // （isAnsOK_and_Case -> isLevelOK）要求 Level_id > 0，
+                                        // 而 mapNode(4 参字符串) 构造器给的是 0。不回填则答案
+                                        // 被静默丢掉：统计里「解析到的答案数」还照常 +1。
+                                        if (id > 0) {
+                                            nd.Level_id = id;
+                                            levelStored = true;
+                                        }
                                     }
                                     if (nd.L_CRC_Num < 0 || id <= 0) num[1]++;
                                 }
@@ -349,7 +368,8 @@ public class mySplitLevelsFragment {
                             // 在前、XSB 在后），必须留着等关卡解析出来再挂上去；
                             // 原版在这里无条件清空，于是「关卡进来了、答案丢了」。
                             if (num[0] > 1 && sSolution.length() > 0) {
-                                mySQLite.m_SQL.inp_Ans(nd, sSolution.toString());
+                                // 关卡没送进库时别拿 nd 去存答案（Level_id 恒为 0，必被否掉）
+                                mySQLite.m_SQL.inp_Ans(levelStored ? nd : null, sSolution.toString());
                                 sSolution = new StringBuilder();
                             }
                             if (line == null) break;
@@ -459,6 +479,7 @@ public class mySplitLevelsFragment {
                     if (myMaps.isXSB(line) || k == Arr.length - 1) {
                         if (!flg || k == Arr.length - 1) {
                             num[0]++;
+                            boolean levelStored = false;   // 本块是否真的入了一个有效关卡
                             if (num[0] > 1) {
                                 if (nd == null)
                                     nd = new mapNode(g_Map.toString(), g_Title.toString(),
@@ -469,6 +490,16 @@ public class mySplitLevelsFragment {
                                         num[2]++;
                                     } else {
                                         id = mySQLite.m_SQL.add_L(myMaps.m_Set_id, nd);
+                                        // PC 修正：把关卡在库里的 id 回填到节点上。
+                                        // inp_Ans -> isAnsOK_and_Case -> isLevelOK() 要求
+                                        // myMaps.curMap.Level_id > 0，而 mapNode(4 参字符串) 构造器
+                                        // 把 Level_id 设成 0 —— 不回填的话答案会被**静默丢弃**：
+                                        // add_S 里的「解析到的答案数」照样 +1，用户只看到「导入数 0」。
+                                        // 原版同样漏了这一步（两边都丢答案），这里补上。
+                                        if (id > 0) {
+                                            nd.Level_id = id;
+                                            levelStored = true;
+                                        }
                                     }
                                     if (nd.L_CRC_Num < 0 || id <= 0) num[1]++;
                                 }
@@ -477,7 +508,9 @@ public class mySplitLevelsFragment {
                             // 「写在关卡之前」的（Title/Author/Solution 在前、XSB 在后），
                             // 必须留着，等关卡解析出来再挂上去；原版无条件清空，答案就丢了。
                             if (num[0] > 1 && sSolution.length() > 0) {
-                                mySQLite.m_SQL.inp_Ans(nd, sSolution.toString());
+                                // 关卡没送进库（重复、或没勾「XSB」只要答案）时不能拿 nd 去存答案：
+                                // 那时 nd 的 Level_id 恒为 0，isLevelOK() 会直接否掉。
+                                mySQLite.m_SQL.inp_Ans(levelStored ? nd : null, sSolution.toString());
                                 sSolution = new StringBuilder();
                             }
                             g_Map = new StringBuilder();

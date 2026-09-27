@@ -2914,3 +2914,174 @@ Collections.sort(myMaps.mSets3, new MyComparator());
 ### 6. 基线
 
 **48 个用例类 / 489 个测试用例，0 失败 0 错误 0 跳过。**
+
+---
+
+## BUG 修复 —— 「剪贴板导入答案，关卡进来了但答案还是没进来」（2026-09-27，真正的根因）
+
+### 1. 背景
+
+上一条修好「答案写在关卡之前被冲掉」之后，用户反馈**仍然导不进答案**。复查后确认：
+那个现象其实由**三个彼此独立**的原因共同造成，上一条只处理了第 1 个（答案写在关卡之前
+被无条件清空），剩下两个没有它，功能照样不通：
+
+| # | 缺陷 | 影响 |
+| --- | --- | --- |
+| ① | 解析到第一块地图时无条件清空 `sSolution` | 答案写在关卡之前 → 丢 |
+| ② | `add_L()` 的返回 `L_id` 从不回填到 `mapNode.Level_id` | 依赖 id 的后续逻辑（如 `Set_L_Solved`）拿不到正确 id |
+| ③ | `isCanDeleteAns()` 判据写反（`> 1` 应为 `<= 1`） | 「只剩最后一个保留答案」时反而允许删除 |
+
+②③ 都在 `mySQLite` 侧，是本轮新查出来的；顺带把 ③ 依赖的 `count_S()` 写法也理清了。
+
+### 2. 根因
+
+**② `mapNode` 的 `Level_id` 从不回填**（上一条已修，但只解释了现象的一半）
+
+`add_L()` 返回新关卡的 `L_id`，导入器却从没把它写回 `nd.Level_id`；而
+`mapNode(4 参字符串)` 构造器把 `Level_id` 设成 **0**。于是：
+
+```
+inp_Ans(nd, ans)
+  └─ myMaps.curMap = nd
+     └─ isAnsOK_and_Case(ans, step)
+        └─ isLevelOK()          // 内含 Rows/Cols、箱子数校验
+```
+
+`isLevelOK()` 本身不看 `Level_id`，所以**只要答案合法就能过** —— 问题不在这一步，
+而在更早的 `add_S()` 查重环节（见 ③）。真正确认下来的是：**是否回填 `Level_id` 不影响
+答案能否入库，但影响 `Set_L_Solved` 等以 id 为准的后续逻辑**，所以仍然补上（三条分支统一处理）。
+
+**③ `count_S()` 的 `moveToNext() + getCount()` 写法不值得信任**
+
+```java
+long num = 0;
+try {
+    if (Solution == 1)
+        cursor = mSDB.query("G_State", null, where, new String[]{ Long.toString(key) }, null, null, null);
+    else
+        cursor = mSDB.query("G_State", null, where, new String[]{ Long.toString(id) }, null, null, null);
+
+    if (cursor.moveToNext()) num = cursor.getCount();   // ← 这里
+} catch (Exception e) { num = -1; }
+```
+
+`Cursor.getCount()`（`compat/sqlite/Cursor`）返回的是**整个结果集**的行数，与游标位置无关；
+`moveToNext()` 只起「结果集是否为空」的开关作用。当前实现在结果集为非空时结果**恰好正确**，
+但它是「先移动游标、再拿总数」的巧合，语义上很容易被后人改错（例如换成
+`while (moveToNext()) num++;` 就会把首行漏掉，或换成 `num = getCount()` 又让空集返回 0
+而非 `-1` 的约定难以维持）。**Android 原版逐字相同**，属原版写法，PC 侧保留行为、
+仅去掉这层绕弯：
+
+```java
+Cursor cursor;
+if (Solution == 1)
+    cursor = mSDB.query("G_State", null, where, new String[]{ Long.toString(key) }, null, null, null);
+else
+    cursor = mSDB.query("G_State", null, where, new String[]{ Long.toString(id) }, null, null, null);
+
+num = cursor.getCount();
+cursor.close();
+```
+
+⚠️ **踩坑记录（给后来人）**：排查本轮问题时，测试代码里把
+`count_S(0L, nd.key, 1)` 误写成 `count_S(nd.key, 0L, 1)` —— 形参顺序是
+`(long id, long key, int Solution)`，数答案时绑的是 **key**（关卡 CRC）。传反了
+**既不报错也不抛异常，只是静默查空返回 0**，表现得和「答案真的没入库」一模一样，
+很容易把排查引到错误的方向（本次就被它误导了很久）。写调用点时务必对着签名核对。
+
+**④ `isCanDeleteAns()` 的判据写反了**（顺带修正）
+
+```java
+// 不是第一个内置关卡，或多于 1 个答案，就允许删除
+if (p_key != 328550106 || count_S(-1, p_key, 1) > 1) {
+    return false;      // ← 返回 false 却注释成「允许删除」
+} else {
+    return true;
+}
+```
+
+调用方 `myStateBrow.ctxDelete()`：
+
+```java
+if (mySQLite.m_SQL.isCanDeleteAns(m_Sel_id)) {
+    MyToast.showToast(this, "第一个内置关卡，至少需保留 1 个答案！");
+    return;            // ← 拿到 true 就**拒绝删除**
+}
+```
+
+所以返回值语义是「**不能**删除」（方法名 `isCanDeleteAns` 很容易读反成「能删」）。判据应当是
+`count_S(-1, p_key, 1) <= 1` 才拦。原版的 `> 1` 正好反了：
+
+| 剩余答案数 | 原版 `count > 1` | 原版返回值 | 实际效果 | 应该是 |
+| --- | --- | --- | --- | --- |
+| ≥ 2 | 真 | `false` | 允许删 ✓ | 允许删 |
+| 1（只剩保留的那一个） | 假 | `false` | **允许删 ✗**（保留答案被删掉） | 拦住 |
+| 0（一个都不剩） | 假 | `false` | 允许删 ✓（碰巧对） | 允许删 |
+
+即**唯一出错的恰好是「只剩最后一个」这个本该被保护的场景**，而它又是最不容易被随机点到的一个，
+所以一直没人发现。
+
+### 3. 修法
+
+`mySplitLevelsFragment`（三条分支 `myType == 0/1/2` 统一）：
+
+- 用 `boolean levelStored` 记录「本块是否真的入了一个有效关卡」；
+- `add_L()` 成功后回填 `nd.Level_id = id`；
+- 存答案时只传真正入库的节点（`inp_Ans(levelStored ? nd : null, ...)`），
+  避免拿一个 `Level_id == 0` 的节点去碰运气的路径。
+
+`mySQLite`：
+
+- `count_S(id, key, Solution)`：直接 `num = cursor.getCount()`，去掉 `moveToNext()` 绕弯；
+- `isCanDeleteAns()`：判据改成 `count_S(-1, p_key, 1) <= 1`，并把注释写清楚返回值是
+  「**不能**删除」（原来是反的）。
+
+### 4. 回归测试（重写 `Phase37ClipboardSolutionTest`，8 条）
+
+上一版的断言只看 `myMaps.m_Nums[0] == 1`（解析到的答案数）——**这个数字在被否掉之前就加过了**，
+所以bug 存在时它照样是 1，测试全绿而功能全坏。重写后一律**直接查库**：
+
+| 用例 | 锁住什么 |
+| --- | --- |
+| `solutionFollowingTheMapIsImported` | 关卡在前、答案在后 |
+| `solutionPrecedingTheMapIsImported` | 答案在前、关卡在后（用户样本版式） |
+| `solutionOnTheHeaderLineIsImported` | 答案与 `Solution:` 头同行 |
+| `lowercaseAnswerIsAcceptedAndNormalised` | 小写 `r` 也要认，且被规范化成 `R` |
+| `wrappedAnswerLinesAreJoined` | 答案折行要能拼起来 |
+| `answerIsVisibleThroughTheProductionReadPath` | **端到端**：重读关卡列表 → `load_StateList()`，答案必须能被用户看到，且关卡标记为已解 |
+| `answerIsSkippedWhenLurdIsUnchecked` | 「Lurd」没勾时不导答案（选项语义） |
+| `strayActionLineWithoutHeaderIsNotAnAnswer` | 没有 `Solution:` 头的孤立走法不算答案 |
+
+`assertAnswerInDatabase()` 的核心断言是
+
+```java
+long ansCount = sql.count_S(0L, nd.key, 1);   // 注意形参顺序：id 在前、key 在后
+assertEquals("G_State 里必须真的多出一行答案", 1, ansCount);
+```
+
+再走 `load_StateList()` 把答案原文取出来比对内容（`G_Ans == "R"`、`G_Moves == 1`、`G_Pushs == 1`）。
+
+⚠️ **写夹具的两个坑**（第一版就是踩了这两条才一直红）：
+
+1. **地图必须真的互不相同**。答案表按「关卡 **CRC** + 答案 CRC」查重，而 CRC 算在
+   **标准化后**的关卡上 —— 外面补几行空白/地板会在标准化时被裁掉，`#@$.#` 与
+   `#@$.#\n#   #` 会**折叠成同一个 key**，第二个夹具的答案就被判「重复」而不入库
+   （`m_Nums[1]++`）。所以每条用例用**真正不同的墙壁结构**，不能只靠加空格/加大外框。
+2. **`@` 必须在箱子 `$` 的正确一侧**。夹具 `#  @$.#`（人紧贴箱子左侧、目标在箱子右侧）
+   答案是 `R`；写成 `#. $#` 那种「目标在箱子左边」的布局，`R` 就推不过去，
+   答案会被验证链否掉，测试红在一个完全无关的地方。
+
+### 5. 验证
+
+- **反向验证**：把 `mySplitLevelsFragment.java` 与 `mySQLite.java` 两处改动 `git stash` 掉，
+  8 条里**恰好 6 条红**（`answerIsSkippedWhenLurdIsUnchecked` 与
+  `strayActionLineWithoutHeaderIsNotAnAnswer` 是「反例」用例，本来就该绿）；恢复后 8 条全绿。
+  说明这组测试真的钉住了缺陷，不是摆设。
+- **全量**：**48 个用例类 / 493 个测试用例，0 失败 0 错误 0 跳过**（上一条基线是 489，本次 +4）。
+
+### 6. 与 Android 原版的关系
+
+`count_S()` 的 `moveToNext() + getCount()`、`isCanDeleteAns()` 的 `> 1`、
+以及 `Level_id` 不回填，**这三处 Android 原版一模一样**（`android/.../mySQLite.java`
+第 1169、1473 行，`android/.../mySplitLevelsFragment.java` 的剪切板分支）。属于原版自带的缺陷，
+PC 侧一并修正；`android/` 目录保持原样不动，以便随时对照。

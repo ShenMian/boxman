@@ -1212,7 +1212,6 @@ public class mySQLite {
 
 	//计数状态数
 	public long count_S(long id, long key, int Solution) {
-		Cursor cursor = mSDB.rawQuery("PRAGMA synchronous=OFF", null);
 		String where;
 
 		if (Solution == 1)  //答案按关卡CRC计数
@@ -1222,16 +1221,16 @@ public class mySQLite {
 
 		long num = 0;
 		try {
+			Cursor cursor;
 			if (Solution == 1)  //计数答案
 				cursor = mSDB.query("G_State", null, where, new String[]{ Long.toString(key) }, null, null, null);
 			else                //计数状态
 				cursor = mSDB.query("G_State", null, where, new String[]{ Long.toString(id) }, null, null, null);
 
-			if (cursor.moveToNext()) num = cursor.getCount();
+			num = cursor.getCount();
+			cursor.close();
 		} catch (Exception e) {
 			num = -1;
-		} finally {
-			if (cursor != null) cursor.close();
 		}
 		return num;
 	}
@@ -1530,11 +1529,15 @@ public class mySQLite {
 			if (cursor.moveToNext()) {
 				p_key = cursor.getLong(cursor.getColumnIndex("P_Key"));
 
-				// 不是第一个内置关卡，或多于 1 个答案，就允许删除
-				if (p_key != 328550106 || count_S(-1, p_key, 1) > 1) {
-					return false;
-				} else {
+				// PC 修正：`true` 的语义是「**不能**删除」（方法名叫 isCanDeleteAns，容易读反）——
+				// 调用方 myStateBrow.ctxDelete() 拿到 true 就弹「至少需保留 1 个答案」并直接 return。
+				// 所以判据必须是「**还剩 <= 1 个**就拦」。原版写的是 `> 1`，正好反了：
+				//   count == 1（只剩保留的那一个）→ `1 > 1` 为假 → 返回 false → 被放过去删掉；
+				//   count == 0（一个都不剩）      → `0 > 1` 也为假 → 返回 false → 允许删（这个碰巧是对的）。
+				if (p_key != 328550106 || count_S(-1, p_key, 1) <= 1) {
 					return true;
+				} else {
+					return false;
 				}
 			}
 
