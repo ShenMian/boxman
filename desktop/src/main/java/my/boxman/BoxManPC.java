@@ -316,6 +316,12 @@ public class BoxManPC extends JFrame {
         tree.setBorder(BorderFactory.createEmptyBorder());
         // 原版 ExpandableListView 单击组别条目即展开/折叠
         tree.setToggleClickCount(1);
+        // 原版展开组别时**不会**滚动列表；JTree 默认会（scrollsOnExpand 默认 true，
+        // toggleExpandState() 会调 ensureRowsAreVisible(row, row + 可见子节点数) 尽量把子项滚进来）。
+        // 这一滚就出事：「按下 → 展开并滚动 → mouseClicked 再按同一坐标取行」之间列表已错位，
+        // 鼠标底下换成了某个子项，于是点「关卡扩展」却打开了 Boxxle_all 之类的关卡集
+        // （集合越多、组别行越靠底部越容易命中）。关掉它，行为才与原版一致。
+        tree.setScrollsOnExpand(false);
         // 缩进完全由渲染器控制（与原版 paddingLeft 一致），不启用 JTree 自带的层级缩进
         tree.setUI(new BasicTreeUI() {
             @Override
@@ -346,6 +352,17 @@ public class BoxManPC extends JFrame {
         // 原版 OnItemLongClickListener + registerForContextMenu：长按条目弹 10 项上下文菜单
         // （组别行 childPos < 0，原版不弹）。
         tree.addMouseListener(new MouseAdapter() {
+            /** 按下时落在哪一行 —— 由 {@link #mousePressed} 记下，见那里的说明。 */
+            private TreePath pressedPath;
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                // JTree 自己的监听器比本监听器先注册，所以到这一步时它已经把「选中的行」
+                // 设成了用户按下的那一行，然后才去展开/折叠（BasicTreeUI.selectPathForEvent）。
+                // 因此这里读到的就是「用户按下的是哪一行」，不受之后列表滚动/重排的影响。
+                pressedPath = tree.getSelectionPath();
+            }
+
             @Override
             public void mouseClicked(MouseEvent e) {
                 TreePath path = tree.getPathForLocation(e.getX(), e.getY());
@@ -358,6 +375,8 @@ public class BoxManPC extends JFrame {
                     showContextMenu(e, path);
                     return;
                 }
+                // 只认「按下时那一行的条目」：组别行按下 → 只展开/折叠，绝不打开关卡集
+                if (!path.equals(pressedPath)) return;
                 if (userObject instanceof SetItem) {
                     int[] pos = positionOf(path);
                     if (pos != null) browLevels(pos[0], pos[1]);

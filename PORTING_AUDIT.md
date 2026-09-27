@@ -2590,3 +2590,135 @@ public void setCheckedBackground(boolean checked) {
 ### 6. 基线
 
 **44 个用例类 / 473 个测试用例，0 失败 0 错误 0 跳过**；`clean fatJar` = **16,035,107** 字节。
+
+---
+
+## 同步原版 9.99u3 的两个逻辑修复到 PC（2026-09-26）
+
+原版基线已从 `9.99u~`（2024-03-27）升到 **`9.99u3`**（2024-09-19，`android/` 当天已整体合并）。
+u3 的 5 个修复里，**只有 2 个是平台无关的**，需要跟进到 `desktop/`：
+
+| u3 修复 | 是否跟进 PC | 说明 |
+| --- | --- | --- |
+| API 35 边到边 → `fitsSystemWindows`（ActionBar / 「+」加关卡） | 否 | Android 专属；PC 是固定 370×780 窗口，没有状态栏 |
+| API 33+ 运行时权限（`MANAGE_EXTERNAL_STORAGE` 等） | 否 | Android 专属 |
+| `registerReceiver(..., RECEIVER_NOT_EXPORTED)` / 注释掉 `startForeground` | 否 | Android 专属 |
+| **放大关卡时皮肤出现黑线** | **是** | Matrix 取整 ← 本次跟进 |
+| **互动双推模式下数箱子不对** | **是** | 逆推计数改读 `m_cArray` ← 本次跟进 |
+
+> ⚠️ **`myPathList[2]` → `/Pictures/Screenshots/`（菜单显示「系统截图」）故意没有跟。**
+> 那是 Android 分区存储下「只有截图目录还能读」的权宜之计；PC 上 `sRoot + "/"` 就是应用目录，
+> 换成 `/Pictures/Screenshots/` 只会指向一个 PC 上根本不存在的子目录（列表变空）。
+
+### 1. 放大关卡时皮肤出现黑线（4 个 `*ViewMap`）
+
+缩放后的 `MSCALE_X/Y` 和 `MTRANS_X/Y` 是小数，位图按小数倍率/小数偏移绘制时边缘会插值出黑缝。
+u3 的做法是**在 `onDraw` 里把 Matrix 取整**：
+
+```java
+values[Matrix.MSCALE_X] = values[Matrix.MSCALE_Y] =
+        ((int) (m_PicWidth * values[Matrix.MSCALE_X])) / (float) m_PicWidth;
+values[Matrix.MTRANS_X] = (int) values[Matrix.MTRANS_X];
+values[Matrix.MTRANS_Y] = (int) values[Matrix.MTRANS_Y];
+```
+
+跟进到 4 个文件（与原版一一对应）：
+
+| 文件 | 除数 | 平移取整 | 备注 |
+| --- | --- | --- | --- |
+| `myGameViewMap` | `m_PicWidth` | `Math.round` | **仅 `mMode != MODE_ZOOM` 时才取整** |
+| `myEditViewMap` | `m_PicWidth` | `(int)` | 无条件 |
+| `myFindViewMap` | `m_PicWidth` | `(int)` | 无条件 |
+| `myRecogViewMap` | 字面量 `50` | `(int)` | 原版这个类没有 `m_PicWidth` 字段，抄的是字面量 |
+
+`myGameViewMap` 额外两处（原版一并改的）：
+- `MODE_NONE/DRAG/ZOOM` + `mMode` 从 `TouchListener` **提到外层字段** —— 因为 `onDraw` 要读它，
+  只有缩放手势进行中才跳过取整（否则手势缩放会被吸附住）。
+- `setZoomMatrix()` 的缩放中心由 `getCenter(scale, values)` 改为 `midPoint(centerF, event)`；
+  原 `getCenter()` 保留但未调用（与原版一致）。
+
+### 2. 互动双推模式数箱子不对（`myGameViewMap.doACT`）
+
+原版注释说得很直白：互动双推下「数目标」= 数**正推棋盘此刻摆着箱子的格子**，所以目标必须从
+`m_cArray` 读，只有箱子数才从 `bk_cArray` 读。旧代码两样都从 `bk_cArray` 读，于是逆推的目标数 /
+完成数永远是 0。PC 端已按 u3 同样拆成 `m_Sets[13] == 1` 的新分支 + 原 `switch` 的旧分支。
+
+### 3. 回归测试（新增 `Phase35DoublePushCountTest`，2 条）
+
+`doACT` 是 private，只有鼠标事件能进 → 测试用**反射**直接调 `doACT(x, y, true)`，
+并手工摆好 `m_cArray` / `bk_cArray`（3×5），靠 `selNode2` 的锚点让 `setPT` 把整块圈成选区。
+
+- `inDoublePushModeReverseGoalsAreCountedOnTheForwardBoard`（`m_Sets[13]=1`）→ 箱 2 / 目标 1 / 完成 1
+- `normalReverseCountingStillReadsOnlyTheBackwardBoard`（`m_Sets[13]=0`）→ 箱 2 / 目标 0 / 完成 0
+
+两种模式**箱子数相同、目标/完成数不同**，正好锁住「有没有走新分支」。
+**验证**：把 `if (myMaps.m_Sets[13] == 1)` 临时改成 `if (false && ...)` → 恰好第 1 条失败；恢复后全绿。
+
+### 4. 基线
+
+**45 个用例类 / 475 个测试用例，0 失败 0 错误 0 跳过**；`clean fatJar` = **16,035,500** 字节。
+
+## BUG 修复 —— 「点一下『关卡扩展』，却自动打开了某个关卡集」（2026-09-27）
+
+### 1. 现象
+
+单击组别行（入门关卡 / 进阶关卡 / 花样关卡 / **关卡扩展**）只想展开它，结果连带**进入了该组里的
+某个关卡集**（用户实例：打开了 `Boxxle_all`）。**不是必现** —— 关卡集越多、组别行越靠列表底部越
+容易命中；鼠标停在哪个位置，展开后就打开那个位置对应的集合。
+
+### 2. 根因：`JTree` 展开时默认会滚动，于是「按下」与「单击」之间列表错位了
+
+原版 Android 的 `ExpandableListView`：单击组别条目只是纯粹的 `expandGroup / collapseGroup`
+（对应 `BoxMan` 的 `OnGroupClickListener`），只有 `onChildClick` 才会 `browLevels()` 进入关卡集，
+**而且展开时列表不会滚动**。
+
+PC 侧把列表落成 `JTree`，`BasicTreeUI` 多了一条原版没有的行为：
+
+```java
+// BasicTreeUI.toggleExpandState(...)
+tree.expandPath(path);
+updateSize();
+if (tree.getScrollsOnExpand())                       // ← 默认 true
+    ensureRowsAreVisible(row, row + treeState.getVisibleChildCount(path));
+```
+
+`ensureRowsAreVisible` 会 `scrollRectToVisible` 把尽量多的子项滚进视口。而 `BoxManPC` 的
+打开动作挂在 `mouseClicked` 上，**派发顺序是 按下 → 抬起 → 单击**：
+
+1. `mousePressed`：`BasicTreeUI` 选中按下的那一行，然后 `toggleExpandState` 展开 + **滚动**；
+2. `mouseClicked`：代码还按**同一个坐标** `tree.getPathForLocation(x, y)` 取行 ——
+   列表已经上移了，鼠标底下换成了某个**子项**，`userObject instanceof SetItem` 成立，
+   `browLevels()` 被触发。
+
+组别行越靠底部，滚动距离越大（最多接近一屏），错位越严重；行本来就贴着顶部时不需要滚动，
+于是「有时正常」。
+
+### 3. 修法（两条一起上）
+
+- **① 关掉自动滚动**（根因）：`createLevelTree()` 里加 `tree.setScrollsOnExpand(false)`。
+  原版本来就不滚，关掉它只是把 PC 独有的一条行为去掉；剩下 `ensureRowsAreVisible(row, row)`
+  仍会在「该行只露出一半」时做最小滚动，此时点击坐标仍落在该行内，不会错位。
+- **② 认「按下时那一行的条目」**（兜底）：`MouseAdapter` 增加 `mousePressed` 记下
+  `tree.getSelectionPath()`（`BasicTreeUI` 的监听器先注册、先执行，它已经把选中行设成按下的
+  那一行之后才去展开，所以这里读到的就是按下行），`mouseClicked` 里加
+  `if (!path.equals(pressedPath)) return;`。即使将来列表因为别的原因重排，也不会误开别的集合。
+  右键菜单走的是 `getPathForLocation` 的 `path`，不受影响。
+
+### 4. 回归测试（新增 `Phase36GroupClickTest`，4 条）
+
+| 用例 | 锁住什么 |
+| --- | --- |
+| `clickingAGroupRowOnlyExpandsIt` | 单击组别：只展开，`browLevels()` 不被调用 |
+| `listShiftingBetweenPressAndClickDoesNotOpenASet` | **人工复现错位**：按下后把视口滚 300px（等同 ① 之前的效果），同一位置底下已换成子项，仍不允许打开 |
+| `clickingAChildRowStillOpensTheSet` | 正面用例：单击关卡集条目照样要进 |
+| `treeDoesNotScrollOnExpand` | `scrollsOnExpand == false` |
+
+⚠️ 写这条用例的两个坑：① `pack()` + `validate()` 之后几何才有效，`getRowBounds` 才可用；
+② 视口滚动后**树坐标不变**，真实鼠标位置是**视口坐标**，所以派发前要按当前
+`viewPosition` 换算（否则「滚了但坐标底下还是同一行」，复现不出来）。
+
+**验证**：把 ① 改回 `true`、② 改成 `if (false && ...)` → 恰好这 2 条失败；恢复后全绿。
+
+### 5. 基线
+
+**46 个用例类 / 479 个测试用例，0 失败 0 错误 0 跳过。**
