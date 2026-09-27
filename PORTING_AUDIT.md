@@ -2814,3 +2814,103 @@ sSolution = new StringBuilder();              // 一律从头记新答案，免�
 ### 5. 基线
 
 **47 个用例类 / 483 个测试用例，0 失败 0 错误 0 跳过。**
+
+---
+
+## BUG 修复 —— 「关卡扩展」里的关卡集不排序（2026-09-27）
+
+### 1. 现象
+
+入门关卡 / 进阶关卡 / 花样关卡三组看起来是「按名称排好的」，只有**关卡扩展**乱：库里是什么
+顺序就显示什么顺序，导入/新建得越多越乱。
+
+### 2. 根因：漏了原版 onCreate 里那一句 `Collections.sort`
+
+原版 `BoxMan.onCreate()` 读完四个组别之后，**只对扩展组**排了一次：
+
+```java
+//二级 item
+myMaps.mSets0 = mySQLite.m_SQL.get_GroupList(0);
+myMaps.mSets1 = mySQLite.m_SQL.get_GroupList(1);
+myMaps.mSets2 = mySQLite.m_SQL.get_GroupList(2);
+myMaps.mSets3 = mySQLite.m_SQL.get_GroupList(3);
+...（补建「新关卡集」）
+//对扩展关卡集，按名称排序
+MyComparator mc = new MyComparator() ;
+Collections.sort(myMaps.mSets3, mc) ;
+```
+
+PC 的 `BoxManPC.loadAllSets()` 把这段搬了过来，**唯独漏了最后两句**。于是：
+
+- 前三组「看起来排好了」其实**不是排的** —— 内置库 `G_Set` 的插入顺序本身就是名称序
+  （`get_GroupList` 没有 `ORDER BY`，走的是 rowid 顺序）；实测内置库 group 0/1/2 确实是
+  `BoxWorld, Microban, Microban_II …` / `696, Cosmonotes …` / `Sasquatch, Sasquatch_II …`，
+  顺序即名称序，所以「看不出问题」。
+- 扩展组（内置库 group 3 为**空**，全是用户导入/新建出来的）才是真正需要排的，于是问题只在
+  这一组暴露。
+
+### 3. 排序规则（原版 `MyComparator` 逐行对应，注意和「直觉」有出入）
+
+| 优先级 | 条件 | 比较方式 |
+| --- | --- | --- |
+| 1 | 一边首字符是汉字、另一边不是 | 非汉字**一律在前**（原版 `!f1 && f2 → -1`） |
+| 2 | 两边都不是汉字 | `compareToIgnoreCase` —— 大小写不敏感 |
+| 3 | 两边都是汉字 | 用 GB2312 字节序比较 = **拼音序**（GB2312 一级字库按拼音排列） |
+
+判定「首字符是否汉字」用的是原版的区间：`c > '\u4e00' && c < '\u9fa5'`。
+
+**第 2 条的实际效果值得单独记一笔。** `compareToIgnoreCase` 是「先折大写、折不动再折小写」，
+所以 ASCII 上真正的顺序是
+
+```
+数字 '0'(0x30) … '9'  <  下划线 '_'(0x5F)  <  字母 'A'…'Z' / 'a'…'z'
+```
+
+即 **数字 &lt; 下划线 &lt; 字母**，而**不是**「下划线最前」，也**不是**「小写在大写之前」
+（大小写被完全忽略，`Dragon` 与 `dragon` 判为相同）。实测排出来是：
+
+```
+1a, 696, _test, Boxxle_all, Sasquatch_II, Zone26, 阿凡提, 包青天, 我的关卡集, 新关卡集
+```
+
+（末四个汉字按 GB2312 字节序 `B0A2 < B0FC < CED2 < D0C2`，正好是拼音 a &lt; b &lt; w &lt; x。）
+
+### 4. 修法
+
+`BoxManPC` 增加 `static final class MyComparator implements Comparator<set_Node>`（原版是
+`BoxMan` 的内部类），在 `loadAllSets()` 末尾补上：
+
+```java
+Collections.sort(myMaps.mSets3, new MyComparator());
+```
+
+- **只排 `mSets3`**，与
+  原版一致 —— 前三组保持库里的顺序。
+- **PC 修正**：原版对空标题会 `substring(0, 1)` 越界抛异常；这里把空串按「非汉字」交给
+  `compareToIgnoreCase`（空串最小），非空标题的相对顺序与原版完全一致。
+- **差异说明**：原版只在 `onCreate` 排一次，本次会话里新建的关卡集排在末尾、下次启动才归位；
+  PC 侧 `refreshTree()` 每次都从库里重读，这里跟着重排一次，让列表始终一致。只影响
+  「本次会话新建的集合排在哪」，**排序规则本身与原版完全一致**。
+
+### 5. 回归测试（新增 `Phase38ExtensionSetSortTest`，6 条）
+
+| 用例 | 锁住什么 |
+| --- | --- |
+| `nonChineseSortsBeforeChinese` | 非汉字一律排在汉字之前 |
+| `asciiComparisonIgnoresCase` | 大小写不敏感（`abc`/`ABC`、`Dragon`/`dragon` 判为相同） |
+| `digitsSortBeforeUnderscoreBeforeLetters` | **数字 &lt; 下划线 &lt; 字母**（容易被「直觉」改坏，单独钉住） |
+| `chineseSortsByPinyin` | 汉字按拼音：阿(a) &lt; 包(b) &lt; 我(w) &lt; 新(x) |
+| `extensionGroupIsSortedLikeThePhoneVersion` | 乱序塞 10 个标题 → 走真实启动路径 → 必须是上表那 10 个的顺序 |
+| `builtInGroupsKeepDatabaseOrder` | 往入门组塞一个「排起来会跑到最前、入库最晚」的标题，它必须留在**末尾**（即前三组没被排过） |
+
+⚠️ 写这条用例的两个坑：① `build/test_boxman_phase38/DataBase/BoxMan.db` 要在 `@BeforeClass`
+里先删掉，否则上一轮跑剩的数据会让「乱序输入 → 固定输出」的断言失效；② 内置库 group 3 是**空**的，
+`loadAllSets()` 遇到空组会补建「新关卡集」，所以集成用例要先把该组清空再塞自己的数据，
+否则断言里会多出一个「新关卡集」。
+
+**验证**：把 `Collections.sort(...)` 注释掉 → 恰好 `extensionGroupIsSortedLikeThePhoneVersion`
+失败（6 条里 1 条红）；恢复后 6 条全绿。
+
+### 6. 基线
+
+**48 个用例类 / 489 个测试用例，0 失败 0 错误 0 跳过。**

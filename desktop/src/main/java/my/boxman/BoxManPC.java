@@ -19,9 +19,12 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.concurrent.Callable;
 import my.boxman.compat.HoloAlertDialog;
 import my.boxman.compat.HoloChoiceDialog;
@@ -207,6 +210,7 @@ public class BoxManPC extends JFrame {
         myMaps.loadSkins();
     }
 
+    /** 原版 {@code BoxMan.onCreate()} 里读四个组别 + 补建「新关卡集」+ 排序那一段。 */
     private void loadAllSets() {
         myMaps.mSets0 = mySQLite.m_SQL.get_GroupList(0);
         myMaps.mSets1 = mySQLite.m_SQL.get_GroupList(1);
@@ -224,6 +228,15 @@ public class BoxManPC extends JFrame {
             } catch (Exception ignored) {
             }
         }
+
+        // 原版 BoxMan.onCreate：对扩展关卡集按名称排序
+        //     Collections.sort(myMaps.mSets3, new MyComparator());
+        // 原版只排 mSets3 —— 入门/进阶/花样三组用的是内置库的插入顺序（本身就按名称排好了），
+        // 扩展组才是用户导入/新建出来的，顺序杂乱。
+        // 差异说明：原版只在 onCreate 排一次，本次会话里新建的关卡集排在末尾、下次启动才归位；
+        // PC 侧 refreshTree() 每次都从库里重读，这里跟着重排一次，让列表始终一致 —— 只影响
+        // 「本次会话新建的集合排在哪」，排序规则本身与原版完全一致。
+        Collections.sort(myMaps.mSets3, new MyComparator());
     }
 
     private void initUI() {
@@ -1907,6 +1920,53 @@ public class BoxManPC extends JFrame {
             this.title = title;
             this.solved = solved;
             this.total = total;
+        }
+    }
+
+    /**
+     * 扩展关卡集排序（原版 {@code BoxMan.MyComparator}，逐行对应）。
+     *
+     * <p>规则按优先级：
+     * <ol>
+     *   <li>首字符<b>不是</b>汉字的排在汉字<b>之前</b>（原版 {@code !f1 && f2 → -1}）；</li>
+     *   <li>两边都不是汉字 → {@link String#compareToIgnoreCase}：大小写不敏感，所以 ASCII
+     *       顺序是 <b>数字 &lt; 下划线 &lt; 字母</b>（{@code '0'=0x30 < '_'=0x5F}；字母先折成
+     *       大写、折不动再折小写，于是 {@code '_'} 恰好落在数字与字母之间）；</li>
+     *   <li>两边都是汉字 → 用 GB2312 字节序比较，等价于<b>拼音</b>序
+     *       （GB2312 一级字库本身就是按拼音排列的）。</li>
+     * </ol>
+     *
+     * <p>PC 修正：原版对空标题会 {@code substring(0, 1)} 越界抛异常。这里把空串按「非汉字」
+     * 处理、交给 {@code compareToIgnoreCase}（空串最小），非空标题的相对顺序与原版完全一致。
+     */
+    static final class MyComparator implements Comparator<set_Node> {
+        @Override
+        public int compare(set_Node o1, set_Node o2) {
+            String s1 = o1.title.trim();
+            String s2 = o2.title.trim();
+
+            boolean f1 = isChineseFirst(s1);   // 首字符是否为汉字
+            boolean f2 = isChineseFirst(s2);   // 首字符是否为汉字
+
+            if (!f1 && f2) return -1;
+            if (f1 && !f2) return 1;
+            // 走到这里只剩 (非汉字, 非汉字) 与 (汉字, 汉字) 两种组合
+            if (!f1) return s1.compareToIgnoreCase(s2);
+
+            try {
+                String g1 = new String(s1.getBytes("GB2312"), "ISO-8859-1");
+                String g2 = new String(s2.getBytes("GB2312"), "ISO-8859-1");
+                return g1.compareTo(g2);
+            } catch (UnsupportedEncodingException e) {
+                return 0;
+            }
+        }
+
+        /** 原版 {@code s.compareTo("\u4e00")>0 && s.compareTo("\u9fa5")<0} 的等价写法。 */
+        private static boolean isChineseFirst(String s) {
+            if (s.isEmpty()) return false;
+            char c = s.charAt(0);
+            return c > '\u4e00' && c < '\u9fa5';
         }
     }
 
