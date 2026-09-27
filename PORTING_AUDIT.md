@@ -2722,3 +2722,95 @@ if (tree.getScrollsOnExpand())                       // ← 默认 true
 ### 5. 基线
 
 **46 个用例类 / 479 个测试用例，0 失败 0 错误 0 跳过。**
+
+---
+
+## BUG 修复 —— 「从剪贴板导入关卡，关卡进来了、答案丢了」（2026-09-27）
+
+### 1. 现象
+
+从剪贴板粘贴一段带答案的关卡文本，**关卡本体能导入，附带的答案没了**。用户给的样本：
+
+```
+Title: Trifle 27 var
+Author: Guenther
+Solution(pushes 603, moves 1868, inlines 185, changes 103, sessions 181):
+<一长串 moves/pushes 走法>
+#####
+#@$.#
+#####
+```
+
+注意版式：**Title / Author / Solution 在 XSB 地图之前**（不少站点、以及「推箱子答案集」类文本
+都是这个顺序）。导完后关卡列表里有关卡，但「答案」是空的。
+
+### 2. 根因：解析到第一个地图时，把「还没归属的答案」当垃圾冲掉了
+
+`mySplitLevelsFragment` 是个手写状态机，答案先攒在 `sSolution` 里，等**下一个**关卡解析出来
+才 `inp_Ans()` 挂上去。原版在「解析到一块新地图」的开头做清理：
+
+```java
+if (sSolution.length() > 0) {                 // ← 只要 sSolution 里有东西就存
+    mySQLite.m_SQL.inp_Ans(nd, sSolution.toString());
+}
+...
+sSolution = new StringBuilder();              // ← 然后无条件清空
+```
+
+问题在于：`sSolution` 非空时，`nd` 可能还是 **null**（`inp_Ans(null, ...)` 不落地），
+而紧跟其后的 `sSolution = new StringBuilder()` 却**照样执行**。于是「答案写在关卡之前」这种
+版式下，答案在第一个地图到来时就被丢掉了 —— 关卡进来了，答案丢了。
+
+`num[0]` 是「已解析关卡数」。`num[0] <= 1` 恰好等价于「这是第一块地图 / 还没存过任何关卡」，
+也就是**此刻 `sSolution` 里的东西只可能是「写在关卡之前」的答案**，绝不能当上一个关卡的答案
+处理。
+
+### 3. 修法（三处，剪贴板分支与文件分支各一对）
+
+把「清空 `sSolution`」从「解析到新地图」的清理动作里**摘出来**，改由 `solution` 处理器在
+**开始记新答案前**自己清；并且 `inp_Ans` 的调用加上 `num[0] > 1` 守卫：
+
+```java
+// 块开始（解析到新地图时）
+if (num[0] > 1 && sSolution.length() > 0) {   // 只有「已经存过关卡」才可能是上一关的答案
+    mySQLite.m_SQL.inp_Ans(nd, sSolution.toString());
+    sSolution = new StringBuilder();
+}
+// ← 原本这里的无条件 sSolution = new StringBuilder() 删除
+```
+
+```java
+// solution 处理器（遇到 Solution(...) 行时）
+if (num[0] > 1 && sSolution.length() > 0) {   // 与上面对称：num[0] <= 1 时那是「关卡前的答案」
+    if (nd == null)
+        nd = new mapNode(g_Map.toString(), g_Title.toString(),
+                g_Author.toString(), g_Comment.toString());
+    mySQLite.m_SQL.inp_Ans(nd, sSolution.toString());
+}
+sSolution = new StringBuilder();              // 一律从头记新答案，免得两段答案首尾接一起
+```
+
+- `myType == 1`（文件）与 `myType == 0`（剪贴板）两条分支的**块开始**各改一处；
+- 两条分支的 **solution 处理器**（文本相同）用 `replace_all` 一起改。
+- 「答案在关卡之后」这种常见版式不受影响：那时 `num[0] > 1` 已成立，行为与原来一致。
+
+### 4. 回归测试（新增 `Phase37ClipboardSolutionTest`，4 条）
+
+| 用例 | 锁住什么 |
+| --- | --- |
+| `solutionFollowingTheMapIsImported` | 答案**在关卡之后**（常规版式）照常导入 |
+| `solutionPrecedingTheMapIsImported` | **答案在关卡之前**：修复前必丢，现在必须挂上 |
+| `solutionOnTheHeaderLineIsImported` | `Solution(...):` 行本身就带一段走法（样本版式） |
+| `answerIsSkippedWhenLurdIsUnchecked` | 「导入答案」未勾选时，答案不落地（不越权） |
+
+⚠️ 写这条用例的两个坑：① 答案表按关卡 **CRC 去重**，所以 `@BeforeClass` 必须先删
+`build/test_boxman_phase37/DataBase/BoxMan.db`，否则上次跑剩的答案会把本次判成「重复」；
+② 四个用例**各用一张不同的地图**（MAP1/MAP2/MAP3），同一张图会 CRC 撞车、
+第二条起被判成 `num[1]++`（重复/无效答案），断言 `m_Nums[1]==0` 就会失败。
+
+**验证**：把守卫改回 `sSolution.length() > 0` → `solutionPrecedingTheMapIsImported` 与
+`solutionOnTheHeaderLineIsImported` 恰好失败；恢复后 4 条全绿。
+
+### 5. 基线
+
+**47 个用例类 / 483 个测试用例，0 失败 0 错误 0 跳过。**

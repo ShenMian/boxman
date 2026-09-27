@@ -344,8 +344,13 @@ public class mySplitLevelsFragment {
                                     if (nd.L_CRC_Num < 0 || id <= 0) num[1]++;
                                 }
                             }
-                            if (sSolution.length() > 0) {
+                            // PC 修正：num[0] <= 1 说明**还没解析到任何关卡**，此时 sSolution
+                            // 是「写在关卡之前的答案」（不少站点的文本就是 Title/Author/Solution
+                            // 在前、XSB 在后），必须留着等关卡解析出来再挂上去；
+                            // 原版在这里无条件清空，于是「关卡进来了、答案丢了」。
+                            if (num[0] > 1 && sSolution.length() > 0) {
                                 mySQLite.m_SQL.inp_Ans(nd, sSolution.toString());
+                                sSolution = new StringBuilder();
                             }
                             if (line == null) break;
 
@@ -353,7 +358,6 @@ public class mySplitLevelsFragment {
                             g_Title = new StringBuilder();
                             g_Author = new StringBuilder();
                             g_Comment = new StringBuilder();
-                            sSolution = new StringBuilder();
                             flg3 = false;
                             flg2 = 0;
                             flg4 = 0;
@@ -378,13 +382,16 @@ public class mySplitLevelsFragment {
                     } else
                     if (myMaps.isLurd && line.trim().toLowerCase(Locale.getDefault())
                             .startsWith("solution")) {
-                        if (sSolution.length() > 0) {
+                        // PC 修正（与「块开始」那处成对）：num[0] <= 1 表示还没存过任何关卡，
+                        // 待存答案是写在关卡之前的，不能当成「上一个关卡的答案」冲掉；
+                        // 下面一律从头开始记新答案，免得把两段答案首尾接在一起。
+                        if (num[0] > 1 && sSolution.length() > 0) {
                             if (nd == null)
                                 nd = new mapNode(g_Map.toString(), g_Title.toString(),
                                         g_Author.toString(), g_Comment.toString());
                             mySQLite.m_SQL.inp_Ans(nd, sSolution.toString());
-                            sSolution = new StringBuilder();
                         }
+                        sSolution = new StringBuilder();
                         if (line.indexOf(":") >= 0) {
                             sSolution.append(line.substring(line.indexOf(":") + 1).trim());
                         } else {
@@ -466,14 +473,17 @@ public class mySplitLevelsFragment {
                                     if (nd.L_CRC_Num < 0 || id <= 0) num[1]++;
                                 }
                             }
-                            if (sSolution.length() > 0) {
+                            // PC 修正：num[0] <= 1 说明**还没解析到任何关卡**，此时的待存答案是
+                            // 「写在关卡之前」的（Title/Author/Solution 在前、XSB 在后），
+                            // 必须留着，等关卡解析出来再挂上去；原版无条件清空，答案就丢了。
+                            if (num[0] > 1 && sSolution.length() > 0) {
                                 mySQLite.m_SQL.inp_Ans(nd, sSolution.toString());
+                                sSolution = new StringBuilder();
                             }
                             g_Map = new StringBuilder();
                             g_Title = new StringBuilder();
                             g_Author = new StringBuilder();
                             g_Comment = new StringBuilder();
-                            sSolution = new StringBuilder();
                             flg3 = false;
                             flg2 = 0;
                             flg4 = 0;
@@ -498,13 +508,16 @@ public class mySplitLevelsFragment {
                     } else
                     if (myMaps.isLurd && line.trim().toLowerCase(Locale.getDefault())
                             .startsWith("solution")) {
-                        if (sSolution.length() > 0) {
+                        // PC 修正（与「块开始」那处成对）：num[0] <= 1 表示还没存过任何关卡，
+                        // 待存答案是写在关卡之前的，不能当成「上一个关卡的答案」冲掉；
+                        // 下面一律从头开始记新答案，免得把两段答案首尾接在一起。
+                        if (num[0] > 1 && sSolution.length() > 0) {
                             if (nd == null)
                                 nd = new mapNode(g_Map.toString(), g_Title.toString(),
                                         g_Author.toString(), g_Comment.toString());
                             mySQLite.m_SQL.inp_Ans(nd, sSolution.toString());
-                            sSolution = new StringBuilder();
                         }
+                        sSolution = new StringBuilder();
                         if (line.indexOf(":") >= 0) {
                             sSolution.append(line.substring(line.indexOf(":") + 1).trim());
                         } else {
