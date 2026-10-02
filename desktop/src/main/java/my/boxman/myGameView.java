@@ -260,10 +260,12 @@ public class myGameView extends JFrame {
 
         final javax.swing.Timer timer = new javax.swing.Timer(500, null);
         timer.setRepeats(false);
+        timer.addActionListener(ev -> {
+            btn.getModel().setArmed(false);
+            longPressAction.run();
+        });
 
         btn.addMouseListener(new MouseAdapter() {
-            private boolean isLongPressTriggered = false;
-
             @Override
             public void mousePressed(MouseEvent e) {
                 if (SwingUtilities.isRightMouseButton(e)) {
@@ -271,14 +273,6 @@ public class myGameView extends JFrame {
                     return;
                 }
                 if (SwingUtilities.isLeftMouseButton(e)) {
-                    isLongPressTriggered = false;
-                    for (ActionListener al : timer.getActionListeners()) {
-                        timer.removeActionListener(al);
-                    }
-                    timer.addActionListener(ev -> {
-                        isLongPressTriggered = true;
-                        longPressAction.run();
-                    });
                     timer.start();
                 }
             }
@@ -2631,7 +2625,7 @@ public class myGameView extends JFrame {
                     myMaps.m_nRecording_Bggin2 = m_lstMovUnDo2.size();
                 else
                     myMaps.m_nRecording_Bggin = m_lstMovUnDo.size();
-                MyToast.showToast(this, "已送入剪切板与导入缓存", MyToast.LENGTH_SHORT);
+                MyToast.showToast(this, "已送入导入缓存", MyToast.LENGTH_SHORT);
                 break;
             case 10:
                 if (myMaps.isMacroDebug) {
@@ -2739,7 +2733,6 @@ public class myGameView extends JFrame {
             }
             saveAct("act1", s1.toString());
             saveAct("act2", s2.toString());
-            myMaps.saveClipper(s1.toString() + (s2.length() > 0 ? "\n" + s2.toString() : ""));
         } catch (Throwable ex) { }
     }
 
