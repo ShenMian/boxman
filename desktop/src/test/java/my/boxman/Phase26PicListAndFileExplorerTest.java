@@ -56,16 +56,29 @@ public class Phase26PicListAndFileExplorerTest {
         // 造一棵固定的目录树：aDir/ bDir/ m.png z.jpg note.txt
         deleteRecursively(new File(root, "aDir"));
         deleteRecursively(new File(root, "bDir"));
+        deleteRecursively(new File(root, "user home"));
+        deleteRecursively(new File(root, "Pictures"));
+        deleteRecursively(new File(root, "Downloads"));
         for (String n : new String[] { "m.png", "small.png", "note.txt" }) {
             new File(root, n).delete();
         }
         assertTrue(new File(root, "aDir").mkdirs());
         assertTrue(new File(root, "bDir").mkdirs());
+        writeBytes(new File(new File(root, "aDir"), "nested.png"), pngBytes(300, 400));
         writeBytes(new File(root, "m.png"), pngBytes(300, 400));
         writeBytes(new File(root, "small.png"), pngBytes(100, 100));   // 尺寸不过 200 的闸门
         writeBytes(new File(root, "note.txt"), "hello".getBytes("UTF-8"));
+        assertTrue(new File(root, "Pictures").mkdirs());
+        assertTrue(new File(root, "Downloads").mkdirs());
+        writeBytes(new File(new File(root, "Pictures"), "picture.jpeg"), pngBytes(300, 400));
+        writeBytes(new File(new File(root, "Downloads"), "download.JPG"), pngBytes(300, 400));
 
-        myMaps.myPathList = new String[] { "", "/tencent/qq_images/", "/", "/", "/" };
+        myMaps.myPathList = new String[] {
+                root.getAbsolutePath(),
+                new File(root, "Pictures").getAbsolutePath(),
+                new File(root, "Downloads").getAbsolutePath(),
+                "/", "/", "/"
+        };
         myMaps.m_Sets[36] = 0;
         myMaps.mFile_List.clear();
         myMaps.edPict = null;
@@ -99,7 +112,8 @@ public class Phase26PicListAndFileExplorerTest {
     public void fileExplorerListsDirectoriesFirstThenPictureFilesOnly() {
         myFileExplorerActivity a = explorer();
         assertEquals("应只列 目录 + jpg/bmp/png（note.txt 被过滤）",
-                Arrays.asList("aDir", "bDir", "m.png", "small.png"), a.getDisplayNames());
+                Arrays.asList("aDir", "bDir", "Downloads", "Pictures", "m.png", "small.png"),
+                a.getDisplayNames());
     }
 
     @Test
@@ -119,7 +133,7 @@ public class Phase26PicListAndFileExplorerTest {
     public void fileExplorerClickingAFileDoesNothing() {
         myFileExplorerActivity a = explorer();
         File before = a.currentParent;
-        a.onItemClick(2);                       // m.png
+        a.onItemClick(4);                       // m.png
         assertSame("点文件不该改变当前目录", before, a.currentParent);
     }
 
@@ -142,7 +156,7 @@ public class Phase26PicListAndFileExplorerTest {
     @Test
     public void fileExplorerOkWritesThePickedPathIntoMyPathList() {
         myFileExplorerActivity a = explorer();
-        myMaps.m_Sets[36] = 2;
+        myMaps.m_Sets[36] = 3;
         a.onItemClick(0);                       // 进 aDir → 路径栏 = /aDir
         final String[] picked = { null };
         a = new myFileExplorerActivity(p -> picked[0] = p);
@@ -150,8 +164,8 @@ public class Phase26PicListAndFileExplorerTest {
         a.onItemClick(0);
         a.onOk();
         assertEquals("完成应把路径+'/' 写进 myPathList[m_Sets[36]]",
-                sep() + "aDir" + "/", myMaps.myPathList[2]);
-        assertEquals("回调应带回同一个值", myMaps.myPathList[2], picked[0]);
+                sep() + "aDir" + "/", myMaps.myPathList[3]);
+        assertEquals("回调应带回同一个值", myMaps.myPathList[3], picked[0]);
     }
 
     @Test
@@ -209,6 +223,16 @@ public class Phase26PicListAndFileExplorerTest {
     }
 
     @Test
+    public void adapterDecodesThumbnailFromFile() {
+        myPicListViewAdapter adapter = new myPicListViewAdapter();
+        java.awt.image.BufferedImage thumbnail =
+                adapter.getThumbnail(new File(root, "m.png"));
+        assertNotNull(thumbnail);
+        assertEquals(myPicListViewAdapter.THUMB_W, thumbnail.getWidth());
+        assertEquals(myPicListViewAdapter.THUMB_H, thumbnail.getHeight());
+    }
+
+    @Test
     public void adapterFallsBackToPlaceholderWhenImageIsBroken() {
         myMaps.mFile_List.add("note.txt");
         myPicListViewAdapter ad = new myPicListViewAdapter();
@@ -220,9 +244,98 @@ public class Phase26PicListAndFileExplorerTest {
     // ============================================================ myPicListView
 
     @Test
+    public void defaultPictureDirectoryUsesDesktopHome() {
+        myMaps.myPathList[0] = "";
+        BoxManPC.initializeDefaultPicturePath();
+        myMaps.m_Sets[36] = 0;
+
+        File home = new File(System.getProperty("user.home")).getAbsoluteFile();
+        assertEquals(home.getAbsolutePath(), new File(myMaps.myPathList[0]).getAbsolutePath());
+        assertEquals(home.getAbsolutePath() + File.separator, myMaps.picDir());
+        assertEquals(new File(home, "level.png").getAbsolutePath(),
+                new myPicListViewAdapter().getFileOf("level.png").getAbsolutePath());
+    }
+
+    @Test
+    public void imageScannerFindsJpegAndUsesPicturesAndDownloadsPaths() {
+        myMaps.m_Sets[36] = 1;
+        myMaps.edPicList(myMaps.picDir());
+        assertEquals(Arrays.asList("picture.jpeg"), myMaps.mFile_List);
+
+        myMaps.m_Sets[36] = 2;
+        myMaps.edPicList(myMaps.picDir());
+        assertEquals(Arrays.asList("download.JPG"), myMaps.mFile_List);
+
+        myPicListViewAdapter adapter = new myPicListViewAdapter();
+        assertEquals(new File(root, "Downloads/download.JPG").getAbsolutePath(),
+                adapter.getFile(0).getAbsolutePath());
+    }
+
+    @Test
+    public void imageScannerDoesNotSearchSubdirectories() {
+        myMaps.m_Sets[36] = 0;
+        myMaps.myPathList[0] = root.getAbsolutePath();
+        myMaps.edPicList(myMaps.picDir());
+        assertTrue(myMaps.mFile_List.contains("m.png"));
+        assertFalse(myMaps.mFile_List.contains("nested.png"));
+    }
+
+    @Test
+    public void legacyAndroidPictureLocationsFallBackToHome() {
+        myMaps.myPathList = new String[] { "", "/tencent/qq_images/", "/", "/", "/" };
+        myMaps.m_Sets[36] = 2;
+        BoxManPC.initializeDefaultPicturePath();
+
+        assertEquals("旧的 Android 根目录占位位置应回到 Home", 0, myMaps.m_Sets[36]);
+        assertEquals(new File(System.getProperty("user.home")).getAbsolutePath(),
+                myMaps.picDir().substring(0, myMaps.picDir().length() - 1));
+        assertEquals(BoxManPC.getPicturesDirectory(), myMaps.myPathList[1]);
+        assertEquals(BoxManPC.getDownloadsDirectory(), myMaps.myPathList[2]);
+
+        myMaps.m_Sets[36] = 0;
+        myPicListView view = picList();
+        captureDialog(view);
+        view.showPathDialog();
+        assertEquals("主目录", view.getPathDialog().list.getModel().getElementAt(0));
+        assertEquals("图片", view.getPathDialog().list.getModel().getElementAt(1));
+        assertEquals("下载", view.getPathDialog().list.getModel().getElementAt(2));
+        assertEquals("自定义位置 1", view.getPathDialog().list.getModel().getElementAt(3));
+        assertEquals("自定义位置 2", view.getPathDialog().list.getModel().getElementAt(4));
+        assertEquals("自定义位置 3", view.getPathDialog().list.getModel().getElementAt(5));
+    }
+
+    @Test
+    public void downloadsDirectoryUsesPlatformAppropriateResolution() throws Exception {
+        File home = new File(root, "user home");
+        File userDirs = new File(home, ".config/user-dirs.dirs");
+        assertTrue(userDirs.getParentFile().mkdirs());
+        java.nio.file.Files.write(userDirs.toPath(),
+                "XDG_DOWNLOAD_DIR=\"${HOME}/获取的文件\"\n".getBytes("UTF-8"));
+
+        assertEquals(new File(home, "获取的文件").getAbsolutePath(),
+                BoxManPC.getDownloadsDirectory("Linux", home.getAbsolutePath(), null, userDirs));
+        java.nio.file.Files.write(userDirs.toPath(),
+                "XDG_PICTURES_DIR=\"${HOME}/我的照片\"\n".getBytes("UTF-8"));
+        assertEquals(new File(home, "我的照片").getAbsolutePath(),
+                BoxManPC.getUserDirectory("Linux", home.getAbsolutePath(), null, userDirs,
+                        "XDG_PICTURES_DIR", "{0DDD015D-B06C-45D5-8C4C-F59713854639}", "Pictures"));
+        assertEquals(new File(home, "Downloads").getAbsolutePath(),
+                BoxManPC.getDownloadsDirectory("Mac OS X", home.getAbsolutePath(), null, userDirs));
+        assertEquals(new File(home, "Downloads").getAbsolutePath(),
+                BoxManPC.getDownloadsDirectory("FreeBSD", home.getAbsolutePath(), null, userDirs));
+        assertEquals(new File(root, "custom-downloads").getAbsolutePath(),
+                BoxManPC.getDownloadsDirectory("Linux", home.getAbsolutePath(),
+                        new File(root, "custom-downloads").getAbsolutePath(), userDirs));
+        assertEquals("D:\\Users\\sms\\Downloads", BoxManPC.parseWindowsRegistryFolder(
+                "HKEY_CURRENT_USER\\...\n    {374DE290-123F-4565-9164-39C4925E467B}    REG_EXPAND_SZ    D:\\Users\\sms\\Downloads"));
+        assertEquals("D:\\Users\\sms\\Pictures", BoxManPC.parseWindowsRegistryFolder(
+                "HKEY_CURRENT_USER\\...\n    {0DDD015D-B06C-45D5-8C4C-F59713854639}    REG_EXPAND_SZ    D:\\Users\\sms\\Pictures"));
+    }
+
+    @Test
     public void picListActionBarHasOnlyThePathAction() {
         myPicListView v = picList();
-        assertEquals(myMaps.myPathList[myMaps.m_Sets[36]], v.actionBar.getBarTitle());
+        assertEquals("主目录", v.actionBar.getBarTitle());
         assertEquals(Arrays.asList("位置"), v.actionBar.getBarActionTitles());
         assertTrue(v.actionBar.isUpEnabled());
         assertFalse("只有一项 always，不该有 ⋮", v.actionBar.isOverflowVisible());
@@ -237,9 +350,10 @@ public class Phase26PicListAndFileExplorerTest {
         HoloChoiceDialog d = v.getPathDialog();
         assertNotNull(d);
         // ⚠️ HoloAlertDialog 用自绘标题，不设 AWT 的 title —— 别拿 getTitle() 断言
-        assertEquals(5, d.list.getModel().getSize());
-        assertEquals("快手默认位置", d.list.getModel().getElementAt(0));
-        assertEquals("QQ 图片接收文件夹", d.list.getModel().getElementAt(1));
+        assertEquals(6, d.list.getModel().getSize());
+        assertEquals("主目录", d.list.getModel().getElementAt(0));
+        assertEquals("图片", d.list.getModel().getElementAt(1));
+        assertEquals("下载", d.list.getModel().getElementAt(2));
         assertEquals(0, d.list.getSelectedIndex());
     }
 
@@ -281,11 +395,11 @@ public class Phase26PicListAndFileExplorerTest {
     public void picListOpenFallsBackToSlashWhenPathIsBlank() {
         myPicListView v = picList();
         captureDialog(v);
-        myMaps.m_Sets[36] = 2;
-        myMaps.myPathList[2] = "   ";
+        myMaps.m_Sets[36] = 3;
+        myMaps.myPathList[3] = "   ";
         v.showPathDialog();
         v.onPathOpen();
-        assertEquals("空位置应补成 /", "/", myMaps.myPathList[2]);
+        assertEquals("空自定义位置应使用应用数据目录", "", myMaps.myPathList[3]);
     }
 
     @Test
@@ -298,7 +412,7 @@ public class Phase26PicListAndFileExplorerTest {
 
     @Test
     public void picListDeleteRemovesTheFileAndTheListEntry() {
-        myMaps.edPicList(myMaps.sRoot + myMaps.myPathList[myMaps.m_Sets[36]]);
+        myMaps.edPicList(myMaps.picDir());
         assertTrue("应扫到两张图", myMaps.mFile_List.contains("m.png"));
         myPicListView v = picList();
         int idx = myMaps.mFile_List.indexOf("m.png");

@@ -100,6 +100,7 @@ public class myRecogViewMap extends JPanel implements MouseListener, MouseMotion
 
     // ---------------------------------------------------------------- 鼠标状态
     private int startX, startY;
+    private int pressedLamp = -1;
     private boolean pressed, dragged;
     private Timer longPressTimer;
     /** 原版 GestureDetector 的长按超时（ViewConfiguration.getLongPressTimeout() = 500ms） */
@@ -396,10 +397,10 @@ public class myRecogViewMap extends JPanel implements MouseListener, MouseMotion
             myPaint.setStyle(Paint.Style.FILL_AND_STROKE);
             myPaint.setTextSize(ss);
             myPaint.setARGB(255, 0, 0, 0);
-            myPaint.setStrokeWidth(5);
+            myPaint.setStrokeWidth(2);
             drawTextFilled(canvas, "关卡尺寸: " + m_nCols + " × " + m_nRows, 10, ss / 2 * 3);
             myPaint.setARGB(255, 255, 255, 255);
-            myPaint.setStrokeWidth(3);
+            myPaint.setStrokeWidth(0.5f);
             drawTextFilled(canvas, "关卡尺寸: " + m_nCols + " × " + m_nRows, 10, ss / 2 * 3);
 
             if (m_Recog != null) {
@@ -411,10 +412,10 @@ public class myRecogViewMap extends JPanel implements MouseListener, MouseMotion
                     myPaint.setStyle(Paint.Style.FILL_AND_STROKE);
                     myPaint.setTextSize(ss);
                     myPaint.setARGB(255, 0, 0, 0);
-                    myPaint.setStrokeWidth(5);
+                    myPaint.setStrokeWidth(2);
                     drawTextFilled(canvas, "箱子: " + m_Recog.m_nBoxNum + "  目标点: " + m_Recog.DstNum, 10, ss * 3);
                     myPaint.setARGB(255, 255, 255, 255);
-                    myPaint.setStrokeWidth(3);
+                    myPaint.setStrokeWidth(0.5f);
                     drawTextFilled(canvas, "箱子: " + m_Recog.m_nBoxNum + "  目标点: " + m_Recog.DstNum, 10, ss * 3);
                 }
             }
@@ -457,24 +458,24 @@ public class myRecogViewMap extends JPanel implements MouseListener, MouseMotion
         if (mXSB == '.') {
             mXSB = 'o';
             myPaint.setTextSize(ss / 2);
-            myPaint.setStrokeWidth(5);
+            myPaint.setStrokeWidth(2);
             drawTextFilled(canvas, "" + mXSB, x + m_nWidth / 2 - ss / 4, y + m_nWidth / 2 + ss / 6);
             myPaint.setARGB(255, 0, 0, 0);
-            myPaint.setStrokeWidth(3);
+            myPaint.setStrokeWidth(1);
             drawTextFilled(canvas, "" + mXSB, x + m_nWidth / 2 - ss / 4, y + m_nWidth / 2 + ss / 6);
         } else if (mXSB == '*') {
             myPaint.setTextSize(ss * 3 / 2);
-            myPaint.setStrokeWidth(5);
+            myPaint.setStrokeWidth(2);
             drawTextFilled(canvas, "" + mXSB, x + m_nWidth / 2 - ss / 3, y + m_nWidth / 3 + ss);
             myPaint.setARGB(255, 0, 0, 0);
-            myPaint.setStrokeWidth(3);
+            myPaint.setStrokeWidth(1);
             drawTextFilled(canvas, "" + mXSB, x + m_nWidth / 2 - ss / 3, y + m_nWidth / 3 + ss);
         } else {
             myPaint.setTextSize(ss);
-            myPaint.setStrokeWidth(5);
+            myPaint.setStrokeWidth(2);
             drawTextFilled(canvas, "" + mXSB, x + m_nWidth / 2 - ss / 2, y + m_nWidth / 2 + ss / 3);
             myPaint.setARGB(255, 0, 0, 0);
-            myPaint.setStrokeWidth(3);
+            myPaint.setStrokeWidth(1);
             drawTextFilled(canvas, "" + mXSB, x + m_nWidth / 2 - ss / 2, y + m_nWidth / 2 + ss / 3);
         }
     }
@@ -675,6 +676,7 @@ public class myRecogViewMap extends JPanel implements MouseListener, MouseMotion
         startX = e.getX();
         startY = e.getY();
         mClickPoint.set(startX, startY);
+        pressedLamp = lampAt(startX, startY);
         pressed = true;
         dragged = false;
         scheduleLongPress();
@@ -684,6 +686,7 @@ public class myRecogViewMap extends JPanel implements MouseListener, MouseMotion
     public void mouseReleased(MouseEvent e) {
         // 原版 ACTION_UP / ACTION_CANCEL
         pressed = false;
+        pressedLamp = -1;
         cancelLongPress();
         m_Lamp = -1;          // 取消长按指示灯
         isLamp = true;
@@ -715,6 +718,10 @@ public class myRecogViewMap extends JPanel implements MouseListener, MouseMotion
     public void mouseDragged(MouseEvent e) {
         dragged = true;
         cancelLongPress();
+        if (m_Lamp < 0 && pressedLamp >= 0) {
+            // On desktop, dragging a handle should not require a stationary long-press first.
+            doLongPress(startX, startY);
+        }
         if (m_Lamp < 0) {
             setDragMatrix(e.getX(), e.getY());
         } else {
@@ -748,6 +755,17 @@ public class myRecogViewMap extends JPanel implements MouseListener, MouseMotion
             longPressTimer.stop();
             longPressTimer = null;
         }
+    }
+
+    private int lampAt(int screenX, int screenY) {
+        if (m_fScale <= 0) return -1;
+        float x = (screenX - m_fLeft) / m_fScale;
+        float y = (screenY - m_fTop) / m_fScale;
+        if (L_Rect.contains(x, y)) return 0;
+        if (T_Rect.contains(x, y)) return 1;
+        if (R_Rect.contains(x, y)) return 2;
+        if (B_Rect.contains(x, y)) return 3;
+        return -1;
     }
 
     /** 原版 {@code onSingleTapUp} */

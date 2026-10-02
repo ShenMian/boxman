@@ -14,7 +14,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
@@ -64,8 +64,9 @@ public class myMaps {
 	static String sPath = "/";
 	static String sFile;    //关卡集文档名
 	static String[] myPathList = {  //关卡截图根目录列表
-			"",                         // 默认位置
-			"/tencent/qq_images/",      // QQ 图片接收位置
+			"",                         // Home（桌面默认位置）
+			"/tencent/qq_images/",      // 旧 QQ 位置；桌面运行时替换为 Pictures
+			"",                         // Downloads
 			"/",                        // 自定义 1
 			"/",                        // 自定义 2
 			"/"                         // 自定义 3
@@ -553,16 +554,18 @@ public class myMaps {
 	}
 
 	/**
-	 * 当前「关卡截图目录」= {@code sRoot + myPathList[m_Sets[36]]}，并保证以分隔符结尾。
+	 * 当前「关卡截图目录」：Desktop 默认位置可为绝对路径（用户 Home），其余位置相对 {@code sRoot}；
+	 * 返回值保证以分隔符结尾。
 	 *
-	 * <p>⚠️ 为什么需要这个方法：原版 {@code sRoot} 自带尾斜杠（{@code "/推箱快手/"}），
-	 * 而 PC 的 {@code sRoot} 是 {@code user.home + "/.boxman"}（**没有**尾斜杠），
-	 * 但 {@code myPathList[0]}（默认位置）又是空串 —— 直接拼会得到
-	 * {@code ".../.boxmanm.png"}。凡是拼 {@code sRoot + myPathList[...]} 的地方都要走这里。
+	 * Android 的位置项是相对应用目录的；Desktop 的默认位置则适配为用户主目录。
 	 */
 	static String picDir() {
-		String s = myMaps.sRoot + myMaps.myPathList[myMaps.m_Sets[36]];
-		if (!s.endsWith("/") && !s.endsWith(java.io.File.separator)) s += "/";
+		int location = myMaps.m_Sets[36];
+		String path = myMaps.myPathList[location];
+		String s = location < 3 && new File(path).isAbsolute()
+				? path
+				: myMaps.sRoot + path;
+		if (!s.endsWith("/") && !s.endsWith(java.io.File.separator)) s += java.io.File.separator;
 		return s;
 	}
 
@@ -570,41 +573,55 @@ public class myMaps {
 	static void edPicList(String fn) {
 		File targetDir = new File(fn);
 		myMaps.mFile_List.clear();
-		if (targetDir.exists()) {
-			File[] fs = targetDir.listFiles();
-			Arrays.sort(fs, new Comparator< File>(){            // 截图文档列表按创建时间排序
-				public int compare(File f1, File f2) {
-					long diff = f1.lastModified() - f2.lastModified();
-					if (diff > 0)
-						return -1;
-					else if (diff == 0)
-						return 0;
-					else
-						return 1;
-				}
-				public boolean equals(Object obj) {
-					return true;
-				}
-			});
-			for (int i = 0; i < fs.length; i++) {
-				int dot = fs[i].getName().lastIndexOf('.');
-				if ((dot > -1) && (dot < (fs[i].length()))) {
-					String prefix = fs[i].getName().substring(fs[i].getName().lastIndexOf(".") + 1);
-					if (prefix.equalsIgnoreCase("jpg") || prefix.equalsIgnoreCase("bmp") || prefix.equalsIgnoreCase("png"))
-						myMaps.mFile_List.add(fs[i].getName());
-				}
-			}
-//			String[] filelist = targetDir.list();
-//			Arrays.sort(filelist, String.CASE_INSENSITIVE_ORDER);
-//			for (int i = 0; i < filelist.length; i++) {
-//				int dot = filelist[i].lastIndexOf('.');
-//				if ((dot > -1) && (dot < (filelist[i].length()))) {
-//					String prefix = filelist[i].substring(filelist[i].lastIndexOf(".") + 1);
-//					if (prefix.equalsIgnoreCase("jpg") || prefix.equalsIgnoreCase("bmp") || prefix.equalsIgnoreCase("png"))
-//						myMaps.mFile_List.add(filelist[i]);
-//				}
-//			}
+		if (!targetDir.isDirectory()) return;
+
+		File[] fs = targetDir.listFiles();
+		if (fs == null) {
+			MyToast.showToast(myMaps.ctxDealFile, "无法读取图片目录：" + targetDir.getAbsolutePath(),
+					MyToast.LENGTH_SHORT);
+			return;
 		}
+		ArrayList<PictureFile> pictures = new ArrayList<PictureFile>();
+		for (File file : fs) {
+			if (!hasPictureExtension(file.getName()) || !file.isFile()) continue;
+			pictures.add(new PictureFile(file.getName(), file.lastModified()));
+		}
+		Collections.sort(pictures, (a, b) -> Long.compare(b.modified, a.modified));
+		for (PictureFile picture : pictures) myMaps.mFile_List.add(picture.name);
+	}
+
+	private static final class PictureFile {
+		final String name;
+		final long modified;
+
+		PictureFile(String name, long modified) {
+			this.name = name;
+			this.modified = modified;
+		}
+	}
+
+	private static final java.util.Set<String> PICTURE_EXTENSIONS = pictureExtensions();
+
+	private static java.util.Set<String> pictureExtensions() {
+		java.util.Set<String> extensions = new java.util.HashSet<String>();
+		for (String extension : ImageIO.getReaderFileSuffixes()) {
+			extensions.add(extension.toLowerCase(Locale.ROOT));
+		}
+		return extensions;
+	}
+
+	private static boolean hasPictureExtension(String name) {
+		int dot = name.lastIndexOf('.');
+		return dot >= 0 && dot < name.length() - 1
+				&& PICTURE_EXTENSIONS.contains(name.substring(dot + 1).toLowerCase(java.util.Locale.ROOT));
+	}
+
+	static boolean isPictureFileName(String name) {
+		return name != null && hasPictureExtension(name);
+	}
+
+	static boolean isPictureFile(File file) {
+		return file != null && file.isFile() && isPictureFileName(file.getName());
 	}
 
 	//"导入/"下的文档列表

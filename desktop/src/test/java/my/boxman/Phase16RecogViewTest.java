@@ -10,6 +10,7 @@ import org.junit.rules.Timeout;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.InputEvent;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
@@ -608,6 +609,28 @@ public class Phase16RecogViewTest {
         assertTrue(m.isLamp);
         m.cancelPendingTimers();
         w.actNum = 0;
+    }
+
+    @Test
+    public void draggingFromLampMovesItsBorderWithoutWaitingForLongPress() {
+        myRecogView w = openView();
+        myRecogViewMap m = w.getMap();
+        float cx = (m.getLeftLampRect().left + m.getLeftLampRect().right) / 2;
+        float cy = (m.getLeftLampRect().top + m.getLeftLampRect().bottom) / 2;
+        int x = toScreen(cx, m);
+        int y = toScreenY(cy, m);
+        int left = m.getMapLeft();
+
+        m.mousePressed(new MouseEvent(m, MouseEvent.MOUSE_PRESSED, System.currentTimeMillis(),
+                InputEvent.BUTTON1_DOWN_MASK, x, y, 1, false, MouseEvent.BUTTON1));
+        m.mouseDragged(new MouseEvent(m, MouseEvent.MOUSE_DRAGGED, System.currentTimeMillis(),
+                InputEvent.BUTTON1_DOWN_MASK, x + 10, y, 0, false, MouseEvent.BUTTON1));
+
+        assertEquals(0, m.getLamp());
+        assertTrue("按下左灯并拖动应调整左边线", m.getMapLeft() > left);
+
+        m.mouseReleased(new MouseEvent(m, MouseEvent.MOUSE_RELEASED, System.currentTimeMillis(),
+                0, x + 10, y, 1, false, MouseEvent.BUTTON1));
     }
 
     @Test
