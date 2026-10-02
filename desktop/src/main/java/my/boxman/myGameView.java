@@ -3414,6 +3414,7 @@ public class myGameView extends JFrame {
     void onImport() {
         prepareImport();
         new myActGMView(this, bt_BK.isChecked()).setVisible(true);
+        processImportedAction();
     }
 
     /** 「导入」在开窗之前的簿记（原版 {@code player_IN} 分支的前半段）。 */
@@ -3424,6 +3425,153 @@ public class myGameView extends JFrame {
             myMaps.m_nRecording_Bggin2 = m_lstMovUnDo2.size();  // 逆推录制起始点
         else
             myMaps.m_nRecording_Bggin = m_lstMovUnDo.size();    // 正推录制起始点
+    }
+
+    /**
+     * 原版 {@code myGameView.onStart()} 中 {@code m_ActionIsRedy} 分支。
+     *
+     * <p>PC 的动作管理窗口是模态对话框，所以在它关闭后由 {@link #onImport()} 消费待执行动作；
+     * 仅在 {@code myActGMView} 中设置全局标记不会自动运行动作。
+     */
+    void processImportedAction() {
+        if (!myMaps.m_ActionIsRedy) return;
+        if (myMaps.curMap == null || mMap == null) {
+            myMaps.m_ActionIsRedy = false;
+            return;
+        }
+
+        mMap.m_lGoto = false;
+        mMap.m_lGoto2 = false;
+        mMap.m_lParityBrightnessShade = false;
+
+        try {
+            if (bt_BK.isChecked()) {
+                executeImportedBackwardAction();
+            } else {
+                executeImportedForwardAction();
+            }
+        } finally {
+            myMaps.m_ActionIsRedy = false;
+            mMap.invalidate();
+            m_bBusing = false;
+            if (!m_imPort_YASS.toLowerCase().contains("yass")
+                    && !m_imPort_YASS.contains("导入")) {
+                m_imPort_YASS = "[导入]";
+            }
+        }
+    }
+
+    /** 原版逆推导入：按可选坐标定位仓管员，再执行首行 LURD。 */
+    private void executeImportedBackwardAction() {
+        String firstLine = myMaps.sAction.length > 0 ? myMaps.sAction[0] : "";
+        int row = -1;
+        int col = -1;
+        int open = firstLine.indexOf('[');
+        int close = firstLine.indexOf(']');
+        if (open >= 0 && close >= 0) {
+            try {
+                String[] xy = firstLine.substring(open + 1, close).split(",");
+                row = Integer.parseInt(xy[1]) - 1;
+                col = Integer.parseInt(xy[0]) - 1;
+                if (row < 0 || col < 0 || row >= myMaps.curMap.Rows || col >= myMaps.curMap.Cols) {
+                    row = -1;
+                    col = -1;
+                }
+            } catch (RuntimeException ignored) {
+                row = -1;
+                col = -1;
+            }
+        }
+
+        boolean hasPlayer = false;
+        if (myMaps.m_ActionIsPos) {
+            if (!isBackwardPlayerPositionValid()) {
+                hasPlayer = placeBackwardPlayer(row, col);
+            } else {
+                hasPlayer = true;
+            }
+        } else if (row >= 0 && col >= 0) {
+            if (isBackwardPlayerPositionValid()) {
+                levelReset(true);
+                removeBackwardPlayer();
+            }
+            m_nRow2 = row;
+            m_nCol2 = col;
+            m_nRow0 = row;
+            m_nCol0 = col;
+            hasPlayer = placeBackwardPlayer(row, col);
+        } else if (isBackwardPlayerPositionValid()) {
+            char player = bk_cArray[m_nRow2][m_nCol2];
+            hasPlayer = player == '+' || player == '@';
+        }
+
+        if (hasPlayer) {
+            doACT(firstLine);
+        } else {
+            MyToast.showToast(this, "没有仓管员或其位置无效！", MyToast.LENGTH_SHORT);
+        }
+    }
+
+    private boolean isBackwardPlayerPositionValid() {
+        return m_nRow2 >= 0 && m_nCol2 >= 0
+                && m_nRow2 < myMaps.curMap.Rows && m_nCol2 < myMaps.curMap.Cols;
+    }
+
+    private boolean placeBackwardPlayer(int row, int col) {
+        if (row < 0 || col < 0 || row >= myMaps.curMap.Rows || col >= myMaps.curMap.Cols) return false;
+        m_nRow2 = row;
+        m_nCol2 = col;
+        m_nRow0 = row;
+        m_nCol0 = col;
+        if (bk_cArray[row][col] == '.') {
+            bk_cArray[row][col] = '+';
+            return true;
+        }
+        if (bk_cArray[row][col] == '-') {
+            bk_cArray[row][col] = '@';
+            return true;
+        }
+        return false;
+    }
+
+    private void removeBackwardPlayer() {
+        if (bk_cArray[m_nRow2][m_nCol2] == '+') {
+            bk_cArray[m_nRow2][m_nCol2] = '.';
+        } else if (bk_cArray[m_nRow2][m_nCol2] == '@') {
+            bk_cArray[m_nRow2][m_nCol2] = '-';
+        }
+    }
+
+    /** 原版正推导入：保留当前点/关卡初态语义，并交给既有宏任务执行器。 */
+    private void executeImportedForwardAction() {
+        if (myMaps.isMacro(myMaps.sAction)) {
+            if (myMaps.sAction.length > 0 && !myMaps.sAction[0].isEmpty()
+                    && myMaps.sAction[0].charAt(0) == '=') {
+                myMaps.m_ActionIsPos = false;
+            } else {
+                myMaps.m_ActionIsPos = true;
+            }
+            if (myMaps.m_ActionIsPos) {
+                m_lstMovedHistory.clear();
+                Iterator<Byte> it = m_lstMovUnDo.descendingIterator();
+                while (it.hasNext()) {
+                    m_lstMovedHistory.offer(it.next());
+                }
+            }
+        }
+
+        if (!myMaps.m_ActionIsPos) levelReset(false);
+
+        m_nMacro_Row = m_nRow;
+        m_nMacro_Col = m_nCol;
+        mMap.myMacro.clear();
+        mMap.myMacro.add(0);
+        mMap.myMacroInf = "";
+        myMaps.isMacroDebug = false;
+        StopMicro();
+        mMicroTask = new RunMicroTask(this);
+        mMicroTask.execute(0, myMaps.sAction.length - 1);
+        if (!m_lstMovReDo.isEmpty()) m_lstMovReDo.clear();
     }
 
     /**

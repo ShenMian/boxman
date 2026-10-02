@@ -69,6 +69,9 @@ public class Phase19GameViewOptionsMenuTest {
     private mapNode savedCur;
     private int savedTrun;
     private boolean savedActionRedy;
+    private boolean savedActionIsPos;
+    private boolean savedActionIsTrun;
+    private String[] savedAction;
     private int savedRecBegin;
 
     @BeforeClass
@@ -89,6 +92,9 @@ public class Phase19GameViewOptionsMenuTest {
         savedCur = myMaps.curMap;
         savedTrun = myMaps.m_nTrun;
         savedActionRedy = myMaps.m_ActionIsRedy;
+        savedActionIsPos = myMaps.m_ActionIsPos;
+        savedActionIsTrun = myMaps.m_ActionIsTrun;
+        savedAction = myMaps.sAction;
         savedRecBegin = myMaps.m_nRecording_Bggin;
 
         // ⚠️ 必须先给 curMap，否则 myGameView 的 initGame() 会因 curMap == null 直接 return，
@@ -113,6 +119,9 @@ public class Phase19GameViewOptionsMenuTest {
         myMaps.curMap = savedCur;
         myMaps.m_nTrun = savedTrun;
         myMaps.m_ActionIsRedy = savedActionRedy;
+        myMaps.m_ActionIsPos = savedActionIsPos;
+        myMaps.m_ActionIsTrun = savedActionIsTrun;
+        myMaps.sAction = savedAction;
         myMaps.m_nRecording_Bggin = savedRecBegin;
     }
 
@@ -190,6 +199,41 @@ public class Phase19GameViewOptionsMenuTest {
         assertFalse("「导入」应把 m_ActionIsRedy 清掉", myMaps.m_ActionIsRedy);
         assertEquals("正推录制起始点应等于当前 undo 栈深度",
                 win.m_lstMovUnDo.size(), myMaps.m_nRecording_Bggin);
+    }
+
+    @Test
+    public void testImportedForwardActionRunsAfterActionWindowCloses() throws Exception {
+        myMaps.m_ActionIsPos = true;
+        myMaps.m_ActionIsTrun = false;
+        myMaps.sAction = new String[]{"{r}~"};
+        myMaps.m_ActionIsRedy = true;
+        int initialCol = win.m_nCol;
+
+        win.processImportedAction();
+
+        assertFalse("动作交接后应清除待执行标记", myMaps.m_ActionIsRedy);
+        long deadline = System.currentTimeMillis() + 5000;
+        while (win.mMicroTask != null && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+
+        assertNull("导入动作任务应完成", win.mMicroTask);
+        assertEquals("导入的 r 应推动仓管员向右移动一格", initialCol + 1, win.m_nCol);
+    }
+
+    @Test
+    public void testImportedBackwardActionUsesItsPlayerCoordinate() {
+        win.bt_BK.setChecked(true);
+        myMaps.m_ActionIsPos = true;
+        myMaps.m_ActionIsTrun = false;
+        myMaps.sAction = new String[]{"[2,2]r"};
+        myMaps.m_ActionIsRedy = true;
+
+        win.processImportedAction();
+
+        assertFalse("逆推动作交接后应清除待执行标记", myMaps.m_ActionIsRedy);
+        assertEquals("应按 [x,y] 坐标放置仓管员后执行 r", 1, win.m_nRow2);
+        assertEquals("逆推的 r 应移动一格", 2, win.m_nCol2);
     }
 
     @Test
