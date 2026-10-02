@@ -11,6 +11,8 @@ import org.junit.rules.Timeout;
 
 import javax.swing.*;
 import java.awt.Component;
+import java.awt.event.InputEvent;
+import java.awt.event.MouseEvent;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -73,6 +75,8 @@ public class Phase19GameViewOptionsMenuTest {
     private boolean savedActionIsTrun;
     private String[] savedAction;
     private int savedRecBegin;
+    private int savedSpeed;
+    private int savedInstantMove;
 
     @BeforeClass
     public static void setUpClass() {
@@ -96,6 +100,8 @@ public class Phase19GameViewOptionsMenuTest {
         savedActionIsTrun = myMaps.m_ActionIsTrun;
         savedAction = myMaps.sAction;
         savedRecBegin = myMaps.m_nRecording_Bggin;
+        savedSpeed = myMaps.m_Sets[10];
+        savedInstantMove = myMaps.m_Sets[6];
 
         // ⚠️ 必须先给 curMap，否则 myGameView 的 initGame() 会因 curMap == null 直接 return，
         //    m_cArray / bk_cArray / mark44 全是 null，导出相关的用例会 NPE。
@@ -111,6 +117,7 @@ public class Phase19GameViewOptionsMenuTest {
     @After
     public void tearDown() {
         if (win != null) {
+            win.myStop();
             win.setVisible(false);
             win.dispose();
             win = null;
@@ -123,6 +130,8 @@ public class Phase19GameViewOptionsMenuTest {
         myMaps.m_ActionIsTrun = savedActionIsTrun;
         myMaps.sAction = savedAction;
         myMaps.m_nRecording_Bggin = savedRecBegin;
+        myMaps.m_Sets[10] = savedSpeed;
+        myMaps.m_Sets[6] = savedInstantMove;
     }
 
     // ---------------------------------------------------------------- 菜单（D-3 本体）
@@ -164,6 +173,56 @@ public class Phase19GameViewOptionsMenuTest {
         List<String> expected = new ArrayList<>(readPlayerXmlTitles());
         assertEquals("菜单顺序必须与 player.xml 一致",
                 expected.toString(), win.optionsMenuTitlesForTest().toString());
+    }
+
+    @Test
+    public void testOpeningActionImportDoesNotOverwriteSystemClipboard() {
+        String previousClipboard = myMaps.loadClipper();
+        String copiedAnswer = "rruulldd";
+        myMaps.saveClipper(copiedAnswer);
+        try {
+            win.prepareImport();
+            assertEquals("准备导入时只应更新内部动作缓存，不应改写系统剪贴板",
+                    copiedAnswer, myMaps.loadClipper());
+        } finally {
+            myMaps.saveClipper(previousClipboard);
+        }
+    }
+
+    @Test
+    public void testLongPressingRedoContinuesAnswerPlaybackAfterRelease() throws Exception {
+        win.myStop();
+        win.dispose();
+
+        StringBuilder level = new StringBuilder();
+        for (int i = 0; i < 50; i++) level.append('#');
+        level.append('\n').append('#').append('@');
+        for (int i = 0; i < 47; i++) level.append('-');
+        level.append('#').append('\n').append('#');
+        for (int i = 0; i < 10; i++) level.append('-');
+        level.append("$.");
+        for (int i = 0; i < 36; i++) level.append('-');
+        level.append('#').append('\n');
+        for (int i = 0; i < 50; i++) level.append('#');
+
+        myMaps.curMap = new mapNode(level.toString(), "演示测试", "", "");
+        myMaps.m_nTrun = 0;
+        myMaps.m_Sets[10] = 4;
+        win = new myGameView();
+        win.bt_IM.setChecked(false);
+        for (int i = 0; i < 30; i++) win.m_lstMovReDo.offer((byte) 3);
+
+        myGameView.GameButton redo = win.bt_ReDo;
+        SwingUtilities.invokeAndWait(() -> redo.dispatchEvent(new MouseEvent(redo,
+                MouseEvent.MOUSE_PRESSED, System.currentTimeMillis(), InputEvent.BUTTON1_DOWN_MASK,
+                5, 5, 1, false, MouseEvent.BUTTON1)));
+        Thread.sleep(650);
+        SwingUtilities.invokeAndWait(() -> redo.dispatchEvent(new MouseEvent(redo,
+                MouseEvent.MOUSE_RELEASED, System.currentTimeMillis(), 0,
+                5, 5, 1, false, MouseEvent.BUTTON1)));
+
+        assertTrue("松开长按的前进按钮后，答案演示应继续", win.m_bYanshi);
+        assertTrue("演示还应保留待执行动作", win.m_nStep > 0);
     }
 
     @Test
