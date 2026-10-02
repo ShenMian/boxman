@@ -138,6 +138,30 @@ public class Phase21ImportExportChainTest {
     }
 
     @Test
+    public void testOpeningImportMenuKeepsClipboardAndResetsTargetSet() throws Exception {
+        writeImportDoc("P21_Clipboard.xsb", LEVEL + "\nTitle: Clipboard\n");
+        String clipboardText = "clipboard must remain unchanged";
+        myMaps.saveClipper(clipboardText);
+
+        BoxManPC pc = new BoxManPC();
+        final HoloAlertDialog[] shown = new HoloAlertDialog[1];
+        pc.dialogShower = dlg -> {
+            shown[0] = (HoloAlertDialog) dlg;
+            dlg.dispose();
+        };
+        myMaps.m_Set_id = 12345;
+
+        pc.sel_Set();
+
+        assertEquals("主菜单导入应创建新关卡集，而不沿用之前的目标集", -1, myMaps.m_Set_id);
+        assertEquals("打开主菜单导入不应读取后清空或覆盖剪切板",
+                clipboardText, myMaps.loadClipper());
+        assertNotNull("应显示文档导入对话框", shown[0]);
+
+        pc.dispose();
+    }
+
+    @Test
     public void testExportDialogDefaultsMatchOriginalLayout() {
         ensureSetWithLevel("P21_ExpDlg");
 

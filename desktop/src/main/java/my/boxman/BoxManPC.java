@@ -1398,9 +1398,10 @@ public class BoxManPC extends JFrame {
      * 所以有效初值是「全选 = 否、XSB = 是、Lurd = 否、自动 = 是」。
      */
     void sel_Set() {
+        myMaps.m_Set_id = -1;  // 原版 menu_set：新导入关卡集，不沿用上下文菜单的目标集
         HoloAlertDialog dlg = buildImportDialog();
         if (dlg != null) {
-            dlg.setVisible(true);
+            dialogShower.accept(dlg);
         }
     }
 
