@@ -1332,25 +1332,9 @@ public class myEditView extends JFrame {
 
     /** {@code edit_export}「导出(XSB)」：全部或选区，带 Title/Author/Comment 头。 */
     private void myExport() {
-        StringBuilder str = new StringBuilder("\n");
+        String text = buildXsbExportText();
 
-        if (mMap.selNode.row < 0 || mMap.selNode == mMap.selNode2) {
-            str.append(getXSB());                    // 计算地图有效部分
-        } else {                                     // 仅导出选区部分
-            for (int i = mMap.selNode.row; i <= mMap.selNode2.row; i++) {
-                for (int j = mMap.selNode.col; j <= mMap.selNode2.col; j++) {
-                    char ch = m_cArray[i + mMap.m_nMapTop][j + mMap.m_nMapLeft];
-                    str.append(isOK(ch) ? ch : '-');
-                }
-                str.append('\n');
-            }
-        }
-        str.append("Title: ").append(myMaps.curMap.Title).append('\n');
-        str.append("Author: ").append(myMaps.curMap.Author).append('\n');
-        str.append("Comment:").append('\n').append(myMaps.curMap.Comment).append('\n');
-        str.append("Comment_end:\n");
-
-        JTextArea ta = new JTextArea(str.toString());
+        JTextArea ta = new JTextArea(text);
         ta.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
         ta.setBackground(HoloContent.FIELD_BG);
         ta.setForeground(HoloContent.TEXT);
@@ -1367,6 +1351,29 @@ public class myEditView extends JFrame {
             dlg.dispose();
         });
         dlg.setVisible(true);
+    }
+
+    String buildXsbExportText() {
+        StringBuilder str = new StringBuilder("\n");
+        if (mMap.selNode.row < 0 || mMap.selNode == mMap.selNode2) {
+            str.append(getXSB());                    // 计算地图有效部分
+        } else {                                     // 仅导出选区部分
+            for (int i = mMap.selNode.row; i <= mMap.selNode2.row; i++) {
+                for (int j = mMap.selNode.col; j <= mMap.selNode2.col; j++) {
+                    char ch = m_cArray[i + mMap.m_nMapTop][j + mMap.m_nMapLeft];
+                    str.append(isOK(ch) ? ch : '-');
+                }
+                str.append('\n');
+            }
+        }
+        if (str.charAt(str.length() - 1) != '\n' && str.charAt(str.length() - 1) != '\r') {
+            str.append('\n');
+        }
+        str.append("Title: ").append(myMaps.curMap.Title).append('\n');
+        str.append("Author: ").append(myMaps.curMap.Author).append('\n');
+        str.append("Comment:").append('\n').append(myMaps.curMap.Comment).append('\n');
+        str.append("Comment_end:\n");
+        return str.toString();
     }
 
     /** {@code edit_import}「导入(XSB 或 Lurd)」：从剪切板，先给一个可编辑的确认框。 */

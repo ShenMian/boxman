@@ -153,6 +153,17 @@ public class Phase17EditViewTest {
                 HoloPopupMenu.isVisible(menu, "导出 XSB 到剪贴板"));
     }
 
+    @Test
+    public void testXsbExportSeparatesMapFromMetadataWithOneNewline() {
+        String text = win.buildXsbExportText();
+        String map = win.getXSBForTest();
+
+        assertTrue("识图进入编辑器后，导出的地图最后一行必须与 Title 分行",
+                text.contains(map + "\nTitle: " + myMaps.curMap.Title + "\n"));
+        assertFalse("地图与 Title 之间不可多出空白行",
+                text.contains(map + "\n\nTitle: " + myMaps.curMap.Title));
+    }
+
     // ---------------------------------------------------------------- 修改尺寸...（8 条校验）
 
     @Test
