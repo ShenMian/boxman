@@ -277,7 +277,6 @@ public class Phase19GameViewOptionsMenuTest {
         assertTrue("关卡初态应带 Author 头", d.xsb.contains("\nAuthor: "));
         assertTrue("关卡初态应以 curMap.Map 开头",
                 d.xsb.startsWith(myMaps.curMap.Map));
-
         assertNotNull(d.local);
         assertEquals("正推现场的行数应等于关卡行数",
                 myMaps.curMap.Rows, d.local.split("\n", -1).length);
