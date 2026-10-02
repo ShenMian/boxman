@@ -155,13 +155,11 @@ public class Phase26PicListAndFileExplorerTest {
 
     @Test
     public void fileExplorerOkWritesThePickedPathIntoMyPathList() {
-        myFileExplorerActivity a = explorer();
         myMaps.m_Sets[36] = 3;
-        a.onItemClick(0);                       // 进 aDir → 路径栏 = /aDir
         final String[] picked = { null };
-        a = new myFileExplorerActivity(p -> picked[0] = p);
+        myFileExplorerActivity a = new myFileExplorerActivity(p -> picked[0] = p);
         toDispose.add(a);
-        a.onItemClick(0);
+        a.onItemClick(0);                       // 进 aDir → 路径栏 = /aDir
         a.onOk();
         assertEquals("完成应把路径+'/' 写进 myPathList[m_Sets[36]]",
                 sep() + "aDir" + "/", myMaps.myPathList[3]);
@@ -202,7 +200,8 @@ public class Phase26PicListAndFileExplorerTest {
     @Test
     public void adapterFileIsRootPlusCurrentPathPlusName() {
         myMaps.mFile_List.add("m.png");
-        myMaps.myPathList[myMaps.m_Sets[36]] = "/sub/";
+        myMaps.m_Sets[36] = 3;
+        myMaps.myPathList[3] = "/sub/";
         myPicListViewAdapter ad = new myPicListViewAdapter();
         assertEquals(new File(root, "sub/m.png").getAbsolutePath(),
                 ad.getFile(0).getAbsolutePath());

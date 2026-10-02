@@ -160,9 +160,14 @@ public class myFileExplorerActivity extends JFrame {
         if (location >= 3 && location < myMaps.myPathList.length
                 && myMaps.myPathList[location] != null && !myMaps.myPathList[location].isEmpty()) {
             String path = myMaps.myPathList[location];
-            File targetDir = new File(path).isAbsolute()
-                    ? new File(path)
-                    : new File(myMaps.sRoot + path);
+            File targetDir;
+            if ("/".equals(path)) {
+                targetDir = new File(myMaps.sRoot);
+            } else if (new File(path).isAbsolute()) {
+                targetDir = new File(path);
+            } else {
+                targetDir = new File(myMaps.sRoot + path);
+            }
             root = targetDir.exists() ? targetDir : new File(myMaps.sRoot);
         } else {
             root = new File(myMaps.sRoot);
