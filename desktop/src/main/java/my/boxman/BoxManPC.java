@@ -191,6 +191,7 @@ public class BoxManPC extends JFrame {
         if (myMaps.sRoot == null) {
             myMaps.sRoot = System.getProperty("user.home") + "/.boxman";
         }
+        initializeDefaultPicturePath();
         myMaps.sPath = "/";
         // 原版：myMaps.m_nWinWidth/Height = 设备屏幕尺寸；PC 端取主窗口的竖屏内容尺寸
         myMaps.m_nWinWidth = PHONE_CONTENT_WIDTH;
@@ -208,6 +209,151 @@ public class BoxManPC extends JFrame {
 
         loadAllSets();
         myMaps.loadSkins();
+    }
+
+    static void initializeDefaultPicturePath() {
+        String home = new File(System.getProperty("user.home")).getAbsolutePath();
+        if (myMaps.myPathList.length == 5) {
+            String[] legacyPaths = myMaps.myPathList;
+            int selected = myMaps.m_Sets[36];
+            String selectedPath = selected >= 0 && selected < legacyPaths.length
+                    ? legacyPaths[selected] : null;
+            myMaps.myPathList = new String[] {
+                    home,
+                        getPicturesDirectory(),
+                    getDownloadsDirectory(),
+                    legacyPaths[2],
+                    legacyPaths[3],
+                    legacyPaths[4]
+            };
+            if (selected >= 2 && selected <= 4) {
+                myMaps.m_Sets[36] = selectedPath == null || selectedPath.trim().isEmpty()
+                        || "/".equals(selectedPath) ? 0 : selected + 1;
+            }
+        } else if (myMaps.myPathList.length < 6) {
+            myMaps.myPathList = java.util.Arrays.copyOf(myMaps.myPathList, 6);
+            myMaps.myPathList[3] = myMaps.myPathList[3] == null ? "/" : myMaps.myPathList[3];
+            myMaps.myPathList[4] = myMaps.myPathList[4] == null ? "/" : myMaps.myPathList[4];
+            myMaps.myPathList[5] = myMaps.myPathList[5] == null ? "/" : myMaps.myPathList[5];
+        }
+        if (myMaps.myPathList[0] == null || myMaps.myPathList[0].trim().isEmpty()) {
+            myMaps.myPathList[0] = home;
+        }
+        if (myMaps.myPathList[1] == null || myMaps.myPathList[1].trim().isEmpty()
+                || "/tencent/qq_images/".equals(myMaps.myPathList[1])) {
+            myMaps.myPathList[1] = getPicturesDirectory();
+        }
+        if (myMaps.myPathList[2] == null || myMaps.myPathList[2].trim().isEmpty()) {
+            myMaps.myPathList[2] = getDownloadsDirectory();
+        }
+        int selected = myMaps.m_Sets[36];
+        if (selected < 0 || selected >= myMaps.myPathList.length
+                || (selected > 2 && "/".equals(myMaps.myPathList[selected]))) {
+            myMaps.m_Sets[36] = 0;
+        }
+    }
+
+    static String getDownloadsDirectory() {
+        String home = new File(System.getProperty("user.home")).getAbsolutePath();
+        String os = System.getProperty("os.name", "");
+        return getUserDirectory(os, home, System.getenv("XDG_DOWNLOAD_DIR"),
+                new File(home, ".config/user-dirs.dirs"), "XDG_DOWNLOAD_DIR",
+                "{374DE290-123F-4565-9164-39C4925E467B}", "Downloads");
+    }
+
+    static String getPicturesDirectory() {
+        String home = new File(System.getProperty("user.home")).getAbsolutePath();
+        String os = System.getProperty("os.name", "");
+        return getUserDirectory(os, home, System.getenv("XDG_PICTURES_DIR"),
+                new File(home, ".config/user-dirs.dirs"), "XDG_PICTURES_DIR",
+                "{0DDD015D-B06C-45D5-8C4C-F59713854639}", "Pictures");
+    }
+
+    static String getDownloadsDirectory(String osName, String home, String environmentPath, File userDirsFile) {
+        return getUserDirectory(osName, home, environmentPath, userDirsFile,
+                "XDG_DOWNLOAD_DIR", "{374DE290-123F-4565-9164-39C4925E467B}", "Downloads");
+    }
+
+    static String getUserDirectory(String osName, String home, String environmentPath,
+                                   File userDirsFile, String configKey, String windowsFolderKey,
+                                   String fallbackName) {
+        String configured = environmentPath;
+        String lowerOs = osName.toLowerCase(java.util.Locale.ROOT);
+        if (lowerOs.contains("windows")) {
+            configured = readWindowsKnownFolder(windowsFolderKey);
+        } else if (lowerOs.contains("linux")
+                && (configured == null || configured.trim().isEmpty()) && userDirsFile.isFile()) {
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(new java.io.FileInputStream(userDirsFile),
+                            java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String trimmed = line.trim();
+                    if (trimmed.startsWith(configKey + "=")) {
+                        configured = trimmed.substring((configKey + "=").length())
+                                .replaceAll("^\"|\"$", "")
+                                .replace("${HOME}", home)
+                                .replace("$HOME", home)
+                                .replace("\\\\", "\\");
+                        break;
+                    }
+                }
+            } catch (java.io.IOException e) {
+                System.err.println("Could not read XDG download directory from "
+                        + userDirsFile + ": " + e.getMessage());
+            }
+        }
+        if (configured != null && !configured.trim().isEmpty()) {
+            File folder = new File(configured);
+            if (folder.isAbsolute()) return folder.getAbsolutePath();
+        }
+        return new File(home, fallbackName).getAbsolutePath();
+    }
+
+    private static String readWindowsKnownFolder(String folderKey) {
+        String registryKey = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders";
+        Process process = null;
+        try {
+            process = new ProcessBuilder("reg", "query", registryKey, "/v", folderKey)
+                    .redirectErrorStream(true).start();
+            StringBuilder output = new StringBuilder();
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(process.getInputStream(),
+                            java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) output.append(line).append('\n');
+            }
+            if (process.waitFor() == 0) return parseWindowsRegistryFolder(output.toString());
+            System.err.println("Could not resolve Windows folder " + folderKey + ": " + output);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.println("Interrupted while resolving Windows folder " + folderKey);
+        } catch (java.io.IOException e) {
+            System.err.println("Could not query Windows folder " + folderKey + ": " + e.getMessage());
+        } finally {
+            if (process != null) process.destroy();
+        }
+        return null;
+    }
+
+    static String parseWindowsRegistryFolder(String output) {
+        for (String line : output.split("\\r?\\n")) {
+            String[] columns = line.trim().split("\\s{2,}", 3);
+            if (columns.length == 3 && columns[1].startsWith("REG_")) {
+                String value = columns[2].trim();
+                java.util.regex.Matcher matcher = java.util.regex.Pattern
+                        .compile("%([^%]+)%").matcher(value);
+                StringBuffer expanded = new StringBuffer();
+                while (matcher.find()) {
+                    String replacement = System.getenv(matcher.group(1));
+                    matcher.appendReplacement(expanded, java.util.regex.Matcher.quoteReplacement(
+                            replacement == null ? matcher.group() : replacement));
+                }
+                matcher.appendTail(expanded);
+                return expanded.toString();
+            }
+        }
+        return null;
     }
 
     /** 原版 {@code BoxMan.onCreate()} 里读四个组别 + 补建「新关卡集」+ 排序那一段。 */

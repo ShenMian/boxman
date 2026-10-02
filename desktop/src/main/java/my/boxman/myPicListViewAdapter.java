@@ -1,11 +1,16 @@
 package my.boxman;
 
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReadParam;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.IOException;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 
 /**
@@ -51,7 +56,7 @@ public class myPicListViewAdapter {
 
     /**
      * 原版 {@code getBitmapFromUrl(key)}：有缓存直接取，没有才生成缩略图。
-     * 失败时返回 1×1 占位图 —— 与原版 {@code Bitmap.createBitmap(1,1,RGB_565)} 一致。
+     * 失败时返回 1×1 占位图。
      */
     public BufferedImage getBitmap(int key) {
         BufferedImage bmp = cache.get(key);
@@ -65,11 +70,30 @@ public class myPicListViewAdapter {
 
     /** 原版 {@code getThumbnail(pathName, width, height)} */
     public BufferedImage getThumbnail(String name) {
-        try {
-            BufferedImage src = ImageIO.read(new File(myMaps.picDir() + name));
-            if (src == null) return null;
-            return scaleToFit(src, THUMB_W, THUMB_H);
-        } catch (Exception e) {
+        return getThumbnail(getFileOf(name));
+    }
+
+    public BufferedImage getThumbnail(File file) {
+        try (ImageInputStream input = ImageIO.createImageInputStream(file)) {
+            if (input == null) return null;
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
+            if (!readers.hasNext()) return null;
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(input, true, true);
+                int width = reader.getWidth(0);
+                int height = reader.getHeight(0);
+                int sample = Math.max(1, (int) Math.ceil(Math.max(
+                        (double) width / THUMB_W, (double) height / THUMB_H)));
+                ImageReadParam param = reader.getDefaultReadParam();
+                if (sample > 1) param.setSourceSubsampling(sample, sample, 0, 0);
+                BufferedImage src = reader.read(0, param);
+                if (src == null) return null;
+                return scaleToFit(src, THUMB_W, THUMB_H);
+            } finally {
+                reader.dispose();
+            }
+        } catch (IOException e) {
             return null;
         }
     }

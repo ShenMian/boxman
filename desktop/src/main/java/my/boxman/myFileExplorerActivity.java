@@ -30,7 +30,6 @@ import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -65,9 +64,6 @@ public class myFileExplorerActivity extends JFrame {
     }
 
     public static final int RESULT_CODE = 999;
-
-    /** 列表里只认这三种后缀（原版 {@code inflateListView} 的判断） */
-    static final String[] PIC_SUFFIX = { "jpg", "bmp", "png" };
 
     public myActionBar actionBar;
     public JLabel tvPath;                  // R.id.tv_file_path
@@ -160,8 +156,13 @@ public class myFileExplorerActivity extends JFrame {
 
     private void initRoot() {
         File root;
-        if (myMaps.myPathList[2] != null && !myMaps.myPathList[2].isEmpty()) {
-            File targetDir = new File(myMaps.sRoot + myMaps.myPathList[2]);
+        int location = myMaps.m_Sets[36];
+        if (location >= 3 && location < myMaps.myPathList.length
+                && myMaps.myPathList[location] != null && !myMaps.myPathList[location].isEmpty()) {
+            String path = myMaps.myPathList[location];
+            File targetDir = new File(path).isAbsolute()
+                    ? new File(path)
+                    : new File(myMaps.sRoot + path);
             root = targetDir.exists() ? targetDir : new File(myMaps.sRoot);
         } else {
             root = new File(myMaps.sRoot);
@@ -198,40 +199,44 @@ public class myFileExplorerActivity extends JFrame {
     void inflateListView(File[] files) {
         if (files == null) files = new File[0];
 
-        List<File> sorted = new ArrayList<File>(Arrays.asList(files));
-        Collections.sort(sorted, new Comparator<File>() {
+        List<FileEntry> sorted = new ArrayList<FileEntry>(files.length);
+        for (File file : files) sorted.add(new FileEntry(file));
+        Collections.sort(sorted, new Comparator<FileEntry>() {
             @Override
-            public int compare(File o1, File o2) {
-                if (o1.isDirectory() && o2.isFile()) return -1;
-                if (o1.isFile() && o2.isDirectory()) return 1;
-                return o1.getName().toLowerCase().compareTo(o2.getName().toLowerCase());
+            public int compare(FileEntry o1, FileEntry o2) {
+                if (o1.directory && !o2.directory) return -1;
+                if (!o1.directory && o2.directory) return 1;
+                return o1.file.getName().toLowerCase().compareTo(o2.file.getName().toLowerCase());
             }
         });
-        currentFiles = sorted.toArray(new File[0]);
+        currentFiles = new File[sorted.size()];
 
         displayFiles.clear();
-        for (File f : currentFiles) {
-            if (f.isDirectory()) {
+        for (int i = 0; i < sorted.size(); i++) {
+            FileEntry entry = sorted.get(i);
+            File f = entry.file;
+            currentFiles[i] = f;
+            if (entry.directory) {
                 displayFiles.add(f);
                 continue;
             }
-            String fn = f.getName();
-            int dot = fn.lastIndexOf('.');
-            // ⚠️ 原版的判断是 (dot > -1) && (dot < fn.length()) —— 没有扩展名的文件
-            // 会被**无条件**列出来（不参与后缀过滤）。照抄。
-            if (dot > -1 && dot < fn.length()) {
-                String prefix = fn.substring(dot + 1);
-                boolean isPic = false;
-                for (String s : PIC_SUFFIX) {
-                    if (prefix.equalsIgnoreCase(s)) { isPic = true; break; }
-                }
-                if (!isPic) continue;
-            }
-            displayFiles.add(f);
+            if (entry.regularFile && myMaps.isPictureFileName(f.getName())) displayFiles.add(f);
         }
 
         ((FileListModel) listView.getModel()).fire();
         updatePathText();
+    }
+
+    private static final class FileEntry {
+        final File file;
+        final boolean directory;
+        final boolean regularFile;
+
+        FileEntry(File file) {
+            this.file = file;
+            this.directory = file.isDirectory();
+            this.regularFile = file.isFile();
+        }
     }
 
     /** 原版 {@code textView.setText(currentParent.getCanonicalPath().replace(myMaps.sRoot, ""))} */

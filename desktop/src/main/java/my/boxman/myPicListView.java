@@ -23,9 +23,19 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.GridLayout;
+import java.awt.Rectangle;
+import java.awt.image.BufferedImage;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 
 /**
@@ -51,6 +61,18 @@ public class myPicListView extends JFrame {
 
     /** 原版 {@code GridView} 列数（见类注释） */
     public static final int COLUMNS = 3;
+    private static final ExecutorService THUMBNAIL_EXECUTOR = Executors.newFixedThreadPool(2, new ThreadFactory() {
+        private int threadNumber;
+
+        @Override
+        public Thread newThread(Runnable task) {
+            Thread thread = new Thread(task, "picture-thumbnail-" + ++threadNumber);
+            thread.setDaemon(true);
+            return thread;
+        }
+    });
+    private static final ImageIcon THUMBNAIL_PLACEHOLDER = new ImageIcon(
+            new BufferedImage(myPicListViewAdapter.THUMB_W, myPicListViewAdapter.THUMB_H, BufferedImage.TYPE_INT_ARGB));
 
     public myActionBar actionBar;
     public JPanel gridPanel;
@@ -66,6 +88,9 @@ public class myPicListView extends JFrame {
     Consumer<JDialog> dialogShower = dlg -> dlg.setVisible(true);
     private HoloChoiceDialog pathDialog;
     private JPopupMenu contextMenu;
+    private final ArrayList<JLabel> thumbnailViews = new ArrayList<JLabel>();
+    private final Set<Integer> loadingThumbnails = new HashSet<Integer>();
+    private int gridGeneration;
     /** 测试缝：「修改」要起的 {@link myFileExplorerActivity}（默认真的 new 一个） */
     Consumer<myFileExplorerActivity> explorerShower = w -> w.setVisible(true);
 
@@ -73,6 +98,7 @@ public class myPicListView extends JFrame {
         setTitle("图片列表 - 推箱快手");
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
+        BoxManPC.initializeDefaultPicturePath();
         adapter = new myPicListViewAdapter();
 
         initUI();
@@ -89,7 +115,7 @@ public class myPicListView extends JFrame {
 
         actionBar = new myActionBar();
         // 原版 setTitle(myMaps.myPathList[myMaps.m_Sets[36]])
-        actionBar.setBarTitle(myMaps.myPathList[myMaps.m_Sets[36]]);
+        actionBar.setBarTitle(getLocationTitle());
         actionBar.setUpEnabled(true, this::dispose);
         actionBar.addBarAction("位置", this::showPathDialog);   // R.id.pic_path
         add(actionBar, BorderLayout.NORTH);
@@ -102,16 +128,28 @@ public class myPicListView extends JFrame {
         scrollPane = HoloContent.scroll(gridPanel);
         HoloContent.darkScrollBar(scrollPane);
         scrollPane.getViewport().setBackground(Color.BLACK);
+        scrollPane.getViewport().addChangeListener(e ->
+                SwingUtilities.invokeLater(this::loadVisibleThumbnails));
+        addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentShown(ComponentEvent e) {
+                SwingUtilities.invokeLater(myPicListView.this::loadVisibleThumbnails);
+            }
+        });
         add(scrollPane, BorderLayout.CENTER);
     }
 
     // ================================================================ 网格
 
     void rebuildGrid() {
+        gridGeneration++;
+        thumbnailViews.clear();
+        loadingThumbnails.clear();
         gridPanel.removeAll();
         for (int i = 0; i < adapter.getCount(); i++) gridPanel.add(createCard(i));
         gridPanel.revalidate();
         gridPanel.repaint();
+        SwingUtilities.invokeLater(this::loadVisibleThumbnails);
     }
 
     /** 行布局对应 {@code res/layout/my_piclist_view_item.xml}：缩略图 + 文件名 */
@@ -121,11 +159,12 @@ public class myPicListView extends JFrame {
         card.setBackground(Color.BLACK);
         card.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));   // ImageView 的 layout_margin=5px
 
-        JLabel lbImg = new JLabel(new ImageIcon(adapter.getBitmap(position)), SwingConstants.CENTER);
+        JLabel lbImg = new JLabel(THUMBNAIL_PLACEHOLDER, SwingConstants.CENTER);
         lbImg.setPreferredSize(new Dimension(myPicListViewAdapter.THUMB_W, myPicListViewAdapter.THUMB_H));
         lbImg.setMinimumSize(lbImg.getPreferredSize());
         lbImg.setMaximumSize(lbImg.getPreferredSize());
         lbImg.setAlignmentX(Component.CENTER_ALIGNMENT);
+        thumbnailViews.add(lbImg);
 
         JLabel lbName = new JLabel(adapter.getFileName(position), SwingConstants.CENTER);
         lbName.setFont(HoloContent.font(java.awt.Font.PLAIN));
@@ -148,6 +187,32 @@ public class myPicListView extends JFrame {
             }
         });
         return card;
+    }
+
+    private void loadVisibleThumbnails() {
+        if (!isDisplayable()) return;
+        Rectangle visible = scrollPane.getViewport().getViewRect();
+        if (visible.width <= 0 || visible.height <= 0) return;
+        int generation = gridGeneration;
+        for (int i = 0; i < thumbnailViews.size(); i++) {
+            JLabel imageView = thumbnailViews.get(i);
+            Component card = imageView.getParent();
+            if (card == null || !card.getBounds().intersects(visible) || !loadingThumbnails.add(i)) continue;
+            String fileName = adapter.getFileName(i);
+            File file = adapter.getFileOf(fileName);
+            int position = i;
+            THUMBNAIL_EXECUTOR.execute(() -> {
+                BufferedImage thumbnail = adapter.getThumbnail(file);
+                SwingUtilities.invokeLater(() -> {
+                    if (generation != gridGeneration) return;
+                    loadingThumbnails.remove(position);
+                    if (position >= thumbnailViews.size()
+                            || thumbnailViews.get(position) != imageView || thumbnail == null) return;
+                    imageView.setIcon(new ImageIcon(thumbnail));
+                    imageView.repaint();
+                });
+            });
+        }
     }
 
     /** 原版 {@code ItemClickListener.onItemClick} */
@@ -211,17 +276,18 @@ public class myPicListView extends JFrame {
 
     // ================================================================ ActionBar「位置」
 
-    /** 原版 {@code R.id.pic_path}：5 项单选 + 修改 / 打开 / 取消 */
+    /** 原版 {@code R.id.pic_path} 的 PC 扩展：Home、Pictures、Downloads、自定义位置 + 操作按钮 */
     void showPathDialog() {
         String[] m_menu = new String[] {
-                "快手默认位置",
-                "QQ 图片接收文件夹",
-                myMaps.myPathList[2],
-                myMaps.myPathList[3],
-                myMaps.myPathList[4]
+                "主目录",
+                "图片",
+                "下载",
+                locationLabel(3),
+                locationLabel(4),
+                locationLabel(5)
         };
         int m = myMaps.m_Sets[36];
-        if (m < 0 || m > 4) m = 0;
+        if (m < 0 || m >= m_menu.length) m = 0;
 
         pathDialog = new HoloChoiceDialog(this, "图片位置", null, m_menu);
         pathDialog.list.setSelectedIndex(m);
@@ -242,7 +308,7 @@ public class myPicListView extends JFrame {
     /** 原版「修改」：只有自定义位置（2..4）能改 */
     void onPathModify() {
         int m = myMaps.m_Sets[36];
-        if (m > 1 && m < 5) {
+        if (m > 2 && m < 6) {
             pathDialog.dispose();
             myFileExplorerActivity explorer = new myFileExplorerActivity(this::onPathPicked);
             explorerShower.accept(explorer);
@@ -255,7 +321,9 @@ public class myPicListView extends JFrame {
     void onPathOpen() {
         String path = myMaps.myPathList[myMaps.m_Sets[36]];
         if (path == null || path.trim().isEmpty()) {
-            path = "/";
+            path = myMaps.m_Sets[36] == 0
+                    ? new File(System.getProperty("user.home")).getAbsolutePath()
+                    : "";
             myMaps.myPathList[myMaps.m_Sets[36]] = path;
         }
         try {
@@ -275,8 +343,22 @@ public class myPicListView extends JFrame {
     void reloadList() {
         adapter.clearCache();
         myMaps.edPicList(myMaps.picDir());
-        actionBar.setBarTitle(myMaps.myPathList[myMaps.m_Sets[36]]);
+        actionBar.setBarTitle(getLocationTitle());
         rebuildGrid();
+    }
+
+    private String getLocationTitle() {
+        int location = myMaps.m_Sets[36];
+        if (location < 0 || location >= myMaps.myPathList.length) location = 0;
+        if (location < 3) return new String[]{"主目录", "图片", "下载"}[location];
+        return myMaps.myPathList[location];
+    }
+
+    private String locationLabel(int index) {
+        String path = myMaps.myPathList[index];
+        return path == null || "/".equals(path)
+                ? "自定义位置 " + (index - 2)
+                : "自定义位置 " + (index - 2) + " (" + path + ")";
     }
 
     // ================================================================ 测试缝
