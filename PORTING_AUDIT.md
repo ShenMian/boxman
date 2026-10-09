@@ -3334,8 +3334,29 @@ HoloClick.install(component, e -> { ... });   // 按下在控件内 + 抬起仍�
 | 另一份检出 | `D:/Users/sms/Desktop/Repos/boxman`（`main`，落后 3 个提交）里**没有** `HoloClick.java`，`myActionBar.java:332/384/442` 仍是 `mouseClicked`；其 `desktop/.gradle` 在 02:54 有构建痕迹 |
 | 修复的存放位置 | 本轮修复**尚未提交**，只存在于 `workbuddy/main-e7715010` 这个 worktree 里 |
 
-**结论**：修复本身经 102 次真鼠标复核成立；「依然存在」最可能是启动的应用不含修复
-（跑了别的检出，或没有重新编译）。**下一步**：提交本修复，并确认启动目录。
+**结论**：修复本身经 102 次真鼠标复核成立；「依然存在」不是修复失效，而是**启动了不含修复的检出**。
+用户随后确认：他运行的是主仓 `D:/Users/sms/Desktop/Repos/boxman/desktop`，
+而主仓当时停在 `fba8deb`（落后 4 个提交、连 `HoloClick.java` 都没有）。
+
+**处置（2026-10-09）**：把本分支 fast-forward 进主仓 `main`，并在主仓复验：
+
+```bash
+git -C D:/Users/sms/Desktop/Repos/boxman merge --ff-only workbuddy/main-e7715010
+#   Updating fba8deb..3859d5f  Fast-forward  13 files changed
+cd D:/Users/sms/Desktop/Repos/boxman/desktop && ./gradlew test --offline
+#   50 类 / 523 例，0 失败 0 错误 0 跳过
+```
+
+字节码比对：主仓与 worktree 的 `myActionBar$BarAction.class` md5 完全一致
+（`6428c89bf51875bb53ade282269cd8d0`）。
+
+> ⚠️ **查「修复到底进没进 class」时的坑**：`HoloClick.install` 的调用在
+> `myActionBar$BarAction.class` / `myActionBar$OverflowButton.class` /
+> `myActionBar$UpIndicator.class` 这三个**内部类**里，**不在** `myActionBar.class`。
+> 查错文件会看到「0 处引用」，误判成「改了没生效」。
+
+**约定（此后每次都要做）**：在本 worktree 里提交后，**必须**把提交 fast-forward 进主仓 `main`，
+否则用户跑的还是旧代码 —— 他会反馈「问题依然存在」。
 
 ### 8. 基线
 
