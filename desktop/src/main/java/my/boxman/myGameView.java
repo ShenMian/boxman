@@ -3887,7 +3887,8 @@ public class myGameView extends JFrame {
         JCheckBox chk12 = new JCheckBox("单步进退", myMaps.m_Sets[23] == 1);
         JCheckBox chk13 = new JCheckBox("进度条", (!bt_BK.isChecked() && mMap.m_lGoto) || (bt_BK.isChecked() && mMap.m_lGoto2));
         JCheckBox chk14 = new JCheckBox("自动爬阶梯", myMaps.m_Sets[29] == 1);
-        JCheckBox chk15 = new JCheckBox("显示当前时间提示", myMaps.m_Sets[25] == 1);
+        JCheckBox chk15 = new JCheckBox("演示时仅推动", myMaps.m_Sets[28] == 1);
+        JCheckBox chk16 = new JCheckBox("显示当前时间提示", myMaps.m_Sets[25] == 1);
 
         pnl.add(chk0); pnl.add(chk1);
         pnl.add(chk2); pnl.add(chk3);
@@ -3897,6 +3898,7 @@ public class myGameView extends JFrame {
         pnl.add(chk10); pnl.add(chk11);
         pnl.add(chk12); pnl.add(chk13);
         pnl.add(chk14); pnl.add(chk15);
+        pnl.add(chk16);
 
         JPanel btnPnl = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton btnOk = new JButton("确定");
@@ -3922,7 +3924,8 @@ public class myGameView extends JFrame {
                 else mMap.m_lGoto = false;
             }
             myMaps.m_Sets[29] = chk14.isSelected() ? 1 : 0;
-            myMaps.m_Sets[25] = chk15.isSelected() ? 1 : 0;
+            myMaps.m_Sets[28] = chk15.isSelected() ? 1 : 0;
+            myMaps.m_Sets[25] = chk16.isSelected() ? 1 : 0;
 
             saveSets();
             mMap.invalidate();

@@ -31,10 +31,15 @@ import static org.junit.Assert.assertTrue;
  *
  * <p>其余各项要一项不少、文案照抄原版，本用例把这份清单按顺序锁死。
  *
- * <p>⚠️ 一个容易踩的坑，正是本次修的东西：原版第 11 项的 UI 文案是「<b>定位双推</b>」，
- * 而「禁用逆推目标点」只是原版代码里的<b>行内注释</b>（{@code myGameView.java:3721} 的
- * {@code //禁用逆推目标点}）兼 <b>INI 键名</b>（{@code BoxMan.java:828/898}）。
- * 端口把注释当成了菜单文字。
+ * <p>⚠️ 两处容易踩的坑，正是本次修的东西：
+ *
+ * <ol>
+ *   <li>原版第 11 项的 UI 文案是「<b>定位双推</b>」，而「禁用逆推目标点」只是原版代码里的
+ *       <b>行内注释</b>（{@code myGameView.java:3721} 的 {@code //禁用逆推目标点}）
+ *       兼 <b>INI 键名</b>（{@code BoxMan.java:828/898}）。端口把注释当成了菜单文字。</li>
+ *   <li>「演示时仅推动」（{@code m_Sets[28]}）在 PC 上照样有意义 —— 演示 / 回放答案时
+ *       只执行推动、跳过纯走动（{@code myGameView.java:987}）—— 原版有，端口漏了。</li>
+ * </ol>
  */
 public class Phase39Setup2DialogTest {
 
@@ -60,6 +65,7 @@ public class Phase39Setup2DialogTest {
             "单步进退",
             "进度条",
             "自动爬阶梯",
+            "演示时仅推动",
             "显示当前时间提示",
     };
 
@@ -89,6 +95,16 @@ public class Phase39Setup2DialogTest {
                 dialog.contains("new JCheckBox(\"定位双推\", myMaps.m_Sets[32] == 1)"));
         assertTrue("保存时应写回 m_Sets[32]",
                 dialog.contains("myMaps.m_Sets[32] = chk10.isSelected() ? 1 : 0;"));
+    }
+
+    /** 「演示时仅推动」照原版绑在 {@code m_Sets[28]} 上。 */
+    @Test
+    public void demoPushOnlyToggleBindsToSet28() throws Exception {
+        String dialog = setup2DialogSource();
+        assertTrue("「演示时仅推动」应读 m_Sets[28]",
+                dialog.contains("new JCheckBox(\"演示时仅推动\", myMaps.m_Sets[28] == 1)"));
+        assertTrue("保存时应写回 m_Sets[28]",
+                dialog.contains("myMaps.m_Sets[28] = chk15.isSelected() ? 1 : 0;"));
     }
 
     /**
