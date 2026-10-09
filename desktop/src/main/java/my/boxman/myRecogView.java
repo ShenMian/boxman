@@ -2,6 +2,7 @@ package my.boxman;
 
 import my.boxman.compat.HoloAlertDialog;
 import my.boxman.compat.HoloChoiceDialog;
+import my.boxman.compat.HoloClick;
 import my.boxman.compat.HoloContent;
 import my.boxman.compat.HoloViewDialog;
 import my.boxman.compat.UiWindow;
@@ -369,13 +370,11 @@ public class myRecogView extends JFrame {
             setMaximumSize(d);
             setAlignmentY(Component.CENTER_ALIGNMENT);
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    if (onClick != null) onClick.run();
-                    if (onPicked != null) onPicked.run();
-                    repaint();
-                }
+            // ⚠️ 走 HoloClick（mouseReleased），不用 mouseClicked —— 见 HoloClick 的类注释
+            HoloClick.install(this, e -> {
+                if (onClick != null) onClick.run();
+                if (onPicked != null) onPicked.run();
+                repaint();
             });
         }
 

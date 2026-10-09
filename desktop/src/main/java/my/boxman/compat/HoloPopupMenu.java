@@ -174,12 +174,14 @@ public final class HoloPopupMenu {
                     repaint();
                 }
 
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    if (!enabled) return;
-                    if (owner != null) owner.setVisible(false);
-                    if (action != null) action.run();
-                }
+            });
+            // ⚠️ 动作走 HoloClick（mouseReleased），不能挂 mouseClicked ——
+            // 否则 ActionBar 溢出菜单、各窗口右键上下文菜单里的条目同样会「点几次才响应」。
+            // 见 HoloClick 的类注释。
+            HoloClick.install(this, e -> {
+                if (!enabled) return;
+                if (owner != null) owner.setVisible(false);
+                if (action != null) action.run();
             });
         }
 

@@ -398,13 +398,29 @@ public class Phase19GameViewOptionsMenuTest {
 
     // ---------------------------------------------------------------- 辅助
 
-    /** 模拟点击弹出菜单里的某一项（{@code Row.mouseClicked} 的等价触发）。 */
+    /**
+     * 模拟点击弹出菜单里的某一项：按下 → 抬起，**不**派发 MOUSE_CLICKED。
+     *
+     * <p>菜单行的动作挂在 {@code mouseReleased} 上（见 {@code my.boxman.compat.HoloClick}）：
+     * Windows 只要在按住期间收到任何一次 {@code WM_MOUSEMOVE} 就会吞掉
+     * {@code MOUSE_CLICKED}，用它模拟出来的用例恰好是最不可靠的那条路径。
+     *
+     * <p>⚠️ 组件未上屏时尺寸是 0×0，{@code contains()} 一律为假，先补一个真实几何。
+     */
     private static void clickRow(JPopupMenu menu, String title) {
         for (Component c : menu.getComponents()) {
             if (c instanceof HoloPopupMenu.Row && title.equals(((HoloPopupMenu.Row) c).getText())) {
+                java.awt.Dimension d = c.getPreferredSize();
+                c.setSize(Math.max(2, d.width), Math.max(2, d.height));
+                int x = c.getWidth() / 2;
+                int y = c.getHeight() / 2;
                 c.dispatchEvent(new java.awt.event.MouseEvent(c,
-                        java.awt.event.MouseEvent.MOUSE_CLICKED,
-                        System.currentTimeMillis(), 0, 5, 5, 1, false,
+                        java.awt.event.MouseEvent.MOUSE_PRESSED,
+                        System.currentTimeMillis(), 0, x, y, 1, false,
+                        java.awt.event.MouseEvent.BUTTON1));
+                c.dispatchEvent(new java.awt.event.MouseEvent(c,
+                        java.awt.event.MouseEvent.MOUSE_RELEASED,
+                        System.currentTimeMillis(), 0, x, y, 1, false,
                         java.awt.event.MouseEvent.BUTTON1));
                 return;
             }

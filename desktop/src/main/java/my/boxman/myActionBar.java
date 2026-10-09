@@ -1,5 +1,6 @@
 package my.boxman;
 
+import my.boxman.compat.HoloClick;
 import my.boxman.compat.HoloPopupMenu;
 
 import javax.swing.*;
@@ -217,6 +218,23 @@ public class myActionBar extends JPanel {
     }
 
     /**
+     * 取某个动作项的组件本体 —— 供自检/测试用。
+     *
+     * <p>{@link #fireBarAction(String)} 是「直接调 action」，绕过了鼠标事件；
+     * 要验证<b>点击契约</b>（按下+抬起都在按钮内才触发）必须拿到组件本体，
+     * 往上派发真实的 {@code MOUSE_PRESSED} / {@code MOUSE_RELEASED}。
+     *
+     * <p>⚠️ 组件没被布局过时尺寸是 0×0，{@code contains()} 一律为假。测试里请先
+     * {@code c.setSize(c.getPreferredSize())}。
+     */
+    JComponent getBarActionComponentForTest(String title) {
+        for (Component c : barActionStrip.getComponents()) {
+            if (c instanceof BarAction && ((BarAction) c).text.equals(title)) return (BarAction) c;
+        }
+        return null;
+    }
+
+    /**
      * 以编程方式触发某个动作项（等价于点它一下）—— 供自检/测试用。
      * 走的是与鼠标点击完全相同的分支，所以能验证真实接线。
      *
@@ -327,12 +345,11 @@ public class myActionBar extends JPanel {
                     hover = false;
                     repaint();
                 }
-
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    showOverflow();
-                }
             });
+            // ⚠️ 动作必须挂 mouseReleased（经 HoloClick），不能挂 mouseClicked ——
+            // 按住期间手抖 1 像素，Windows 就会把 MOUSE_CLICKED 吃掉，表现为「点了没反应」。
+            // 详见 HoloClick 的类注释。
+            HoloClick.install(this, () -> showOverflow());
         }
 
         @Override
@@ -380,10 +397,10 @@ public class myActionBar extends JPanel {
                     repaint();
                 }
 
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    if (action != null) action.run();
-                }
+            });
+            // 同 OverflowButton：走 HoloClick（mouseReleased），不用 mouseClicked
+            HoloClick.install(this, () -> {
+                if (action != null) action.run();
             });
         }
 
@@ -438,10 +455,11 @@ public class myActionBar extends JPanel {
                     repaint();
                 }
 
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    if (enabled && BarAction.this.action != null) BarAction.this.action.run();
-                }
+            });
+            // ⚠️ 就是这里出的问题：原先挂 mouseClicked，导致「╋ / 顶 / 底」有时点几次才响应。
+            // 改走 HoloClick（按下+抬起都在按钮内 → mouseReleased 触发），见 HoloClick 的类注释。
+            HoloClick.install(this, () -> {
+                if (enabled && action != null) action.run();
             });
         }
 

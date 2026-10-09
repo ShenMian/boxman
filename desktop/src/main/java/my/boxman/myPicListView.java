@@ -1,6 +1,7 @@
 package my.boxman;
 
 import my.boxman.compat.HoloChoiceDialog;
+import my.boxman.compat.HoloClick;
 import my.boxman.compat.HoloContent;
 import my.boxman.compat.HoloPopupMenu;
 import my.boxman.compat.UiWindow;
@@ -175,16 +176,14 @@ public class myPicListView extends JFrame {
         card.add(lbName);
 
         // 原版 onItemClick（左键）；PC 的长按=右键→上下文菜单
-        card.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (SwingUtilities.isRightMouseButton(e)) {
-                    m_Num = position;
-                    showContextMenu(e);
-                    return;
-                }
-                onItemClick(position);
+        // ⚠️ 走 HoloClick（mouseReleased），不用 mouseClicked —— 见 HoloClick 的类注释
+        HoloClick.install(card, e -> {
+            if (SwingUtilities.isRightMouseButton(e)) {
+                m_Num = position;
+                showContextMenu(e);
+                return;
             }
+            onItemClick(position);
         });
         return card;
     }

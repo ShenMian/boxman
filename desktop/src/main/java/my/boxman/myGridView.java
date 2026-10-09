@@ -1,6 +1,7 @@
 package my.boxman;
 
 import my.boxman.compat.HoloChoiceDialog;
+import my.boxman.compat.HoloClick;
 import my.boxman.compat.HoloConfirmDialog;
 import my.boxman.compat.HoloContent;
 import my.boxman.compat.HoloPopupMenu;
@@ -786,19 +787,18 @@ public class myGridView extends JFrame {
 
             updateLayoutMode();
 
-            addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    if (SwingUtilities.isRightMouseButton(e)) {
-                        showContextMenu(e);
-                    } else if (e.getClickCount() == 1) {
-                        if (myMaps.isSelect) {
-                            node.Select = !node.Select;
-                            updateSelection();
-                            setSelectAll();
-                        } else {
-                            openGame(node, index);
-                        }
+            // ⚠️ 走 HoloClick（按下+抬起都落在卡片内 → mouseReleased 触发），不能挂 mouseClicked ——
+            // 否则「单击打开关卡 / 右键菜单」也会偶发点几次才响应。见 HoloClick 的类注释。
+            HoloClick.install(this, e -> {
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    showContextMenu(e);
+                } else if (e.getClickCount() == 1) {
+                    if (myMaps.isSelect) {
+                        node.Select = !node.Select;
+                        updateSelection();
+                        setSelectAll();
+                    } else {
+                        openGame(node, index);
                     }
                 }
             });
@@ -1685,6 +1685,25 @@ public class myGridView extends JFrame {
     /** 供测试/自检：切换多选模式（等同点击溢出菜单的「多选模式」） */
     public void setSelectModeForTest(boolean on) {
         toggleSelectMode(on);
+    }
+
+    // ---------------------------------------------------------------- 滚动位置（自检/测试）
+
+    /**
+     * 纵向滚动条当前值（0 = 顶）。
+     *
+     * <p>与 {@link #getScrollMaxForTest()} 配合，用来钉住「顶 / 底」这两个顶栏动作项
+     * <b>真的把网格滚动了</b> —— 光验证「动作被触发」不够，用户看到的「不响应」是滚动没发生。
+     * 见 {@code Phase40ReliableClickTest.barActionTopAndBottomActuallyScrollTheGrid}。
+     */
+    int getScrollValueForTest() {
+        return scrollPane.getVerticalScrollBar().getValue();
+    }
+
+    /** 纵向滚动条能滚到的最大值（{@code maximum - extent}）—— 0 表示内容还没超过视口。 */
+    int getScrollMaxForTest() {
+        JScrollBar b = scrollPane.getVerticalScrollBar();
+        return b.getMaximum() - b.getModel().getExtent();
     }
 
     /**

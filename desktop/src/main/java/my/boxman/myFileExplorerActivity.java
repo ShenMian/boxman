@@ -1,5 +1,6 @@
 package my.boxman;
 
+import my.boxman.compat.HoloClick;
 import my.boxman.compat.HoloConfirmDialog;
 import my.boxman.compat.HoloContent;
 import my.boxman.compat.UiWindow;
@@ -127,12 +128,10 @@ public class myFileExplorerActivity extends JFrame {
         listView.setForeground(HoloContent.TEXT);
         listView.setSelectionBackground(HoloContent.LIST_SELECTED);
         listView.setSelectionForeground(HoloContent.TEXT);
-        listView.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                int position = listView.locationToIndex(e.getPoint());
-                onItemClick(position);
-            }
+        // ⚠️ 走 HoloClick（mouseReleased），不用 mouseClicked —— 见 HoloClick 的类注释
+        HoloClick.install(listView, e -> {
+            int position = listView.locationToIndex(e.getPoint());
+            onItemClick(position);
         });
 
         JPanel content = new JPanel(new BorderLayout());

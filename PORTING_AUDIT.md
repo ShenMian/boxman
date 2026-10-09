@@ -3169,3 +3169,184 @@ PC 侧一并修正；`android/` 目录保持原样不动，以便随时对照。
 把自造的浅色 `JDialog` + `JCheckBox` + 单个「确定」，换成原版的
 `HoloAlertDialog` + 多选列表 + `重置 / 默认 / 保存` 三键。**该待办依然未做** ——
 用户 2026-10-09 明确「UI 风格不需要变」，故本轮不动载体。
+
+---
+
+## Bug 修复 —— 自绘可点组件的点击契约：从 `mouseClicked` 改为 `mouseReleased`（已完成并复核，2026-10-09）
+
+### 1. 现象
+
+关卡网格顶栏的三个 `showAsAction="always"` 动作项「`╋` / `顶` / `底`」点击**有时毫无反应**，
+需要点几次才响应；同一个鼠标在别的程序里完全正常。用户据此一度怀疑是鼠标硬件坏了。
+
+### 2. 根因
+
+这三个按钮是 `myActionBar.BarAction extends JComponent`，动作**只**挂在 `mouseClicked` 上
+（原 `myActionBar.java:442`）。而 `MOUSE_CLICKED` **不是**原始事件，是 Windows 原生层在
+`AwtComponent::WmMouseUp` 里**派生**出来的，受一个**无阈值**的开关控制
+（`src/java.desktop/windows/native/libawt/windows/awt_Component.cpp`）：
+
+```cpp
+// WmMouseDown —— 允许本按钮产生 click
+m_mouseButtonClickAllowed |= GetButtonMK(button);
+
+// WmMouseMove —— 按住期间来了任何一次 WM_MOUSEMOVE（哪怕 1 像素）
+SendMouseEvent(java_awt_event_MouseEvent_MOUSE_DRAGGED, ...);
+m_mouseButtonClickAllowed = 0;          // ← 这一次点击就此作废
+
+// WmMouseUp —— 位还在才补发 CLICK
+if ((m_mouseButtonClickAllowed & GetButtonMK(button)) != 0) {
+    SendMouseEvent(java_awt_event_MouseEvent_MOUSE_CLICKED, ...);
+}
+```
+
+注意这里**没有** `SM_CXDRAG` 之类的容差 —— 不是「拖了 4px 才算拖」，是「动一下就作废」。
+于是表现正是「有时一下就好、有时点几次才响应」。
+
+**Java 侧根本不生成 click**：`sun/awt/windows/WComponentPeer.handleJavaMouseEvent` 只处理
+`MOUSE_PRESSED`（为了要焦点），没有任何一处合成 `MOUSE_CLICKED`。
+
+**Swing 自己也从不依赖它**（这就是「为什么别的程序没事」的答案）：
+`BasicButtonListener.mouseClicked()` 是**空方法**（`BasicButtonListener.java:234-235`），
+`JButton` 的动作在 `mouseReleased()`（`:270-282`）里经 `model.setPressed(false)` 触发。
+
+**而且 `mouseReleased` 更忠实于原版**：Android 的 `View.OnClickListener` 与 ActionBar
+菜单项（`onOptionsItemSelected`）都在 `ACTION_UP` 触发 ——
+`android myGridView.java:503 / 510` 的 `levels_top` / `levels_bottom` 就是「顶 / 底」。
+
+### 3. 改法：抽出 `compat/HoloClick`
+
+新增 `desktop/src/main/java/my/boxman/compat/HoloClick.java`，把 `JButton` 的点击契约封装成一行：
+
+```java
+HoloClick.install(component, e -> { ... });   // 按下在控件内 + 抬起仍在控件内 → 用 MOUSE_RELEASED 回调
+```
+
+刻意**不**在 `mouseExited` 里取消：AWT 有时会在弹出窗口 / 其它窗口盖住光标时发出莫名的
+`mouseExited`，用它取消反而更不可靠；抬起时用 `contains()` 判一次就够了。
+
+本次改到的 8 处（6 个文件）：
+
+| 文件 | 组件 | 原来 |
+|---|---|---|
+| `myActionBar` | `BarAction`（`╋` / `顶` / `底` 等动作项） | `mouseClicked` ← **本次报的 bug** |
+| `myActionBar` | `OverflowButton`（`⋮`） | `mouseClicked` |
+| `myActionBar` | `UpIndicator`（返回折角） | `mouseClicked` |
+| `compat/HoloPopupMenu` | `Row`（溢出菜单 / 右键上下文菜单的每一行） | `mouseClicked` |
+| `myGridView` | `LevelCard`（关卡单元：单击打开 / 右键菜单） | `mouseClicked` |
+| `myPicListView` | 图片卡片 | `mouseClicked` |
+| `myFileExplorerActivity` | 文件列表 | `mouseClicked` |
+| `myRecogView` | `SimilarityBox`（相似度方块） | `mouseClicked` |
+
+### 4. ⚠️ 同一缺陷仍在的地方（本轮未改）
+
+`grep -rn "mouseClicked" desktop/src/main/java` 后逐个核对，以下几处**也**把点击动作挂在
+`mouseClicked` 上，只是都还配着 `mousePressed` / `mouseReleased`（用于长按 / 双击判定），
+需逐个确认语义后再改，故本轮未动：
+
+| 文件:行 | 挂在 `mouseClicked` 上的动作 |
+|---|---|
+| `myStateBrow.java:244` | 单击子项 = 载入该状态 / 答案并结束（原版 `onChildClick`） |
+| `mySolutionBrow.java:124` | 单击子项（原版 `onChildClick`） |
+| `myRecogView.java:879` | 单击（带长按抑制 `suppressClick`） |
+| `myRecogViewMap.java:699` | `onSingleTapUp` / `onDoubleTap` |
+| `myFindViewMap.java:453` | `onSingleTapUp` / `onDoubleTap` + 两个按钮热区 |
+| `myEditViewMap.java:683` | 双击边界 = `My_ReSize` |
+| `BoxManPC.java:526` | 单击关卡集条目（已有 `pressedPath` 兜底，见 `:2691` 那条记录） |
+
+（`myGameViewMap.java:240` 的 `mouseClicked` 是**空实现**，不必改。）
+
+### 5. 回归测试
+
+新增 `desktop/src/test/java/my/boxman/Phase40ReliableClickTest.java`（11 条）。
+关键手法：**刻意不派发 `MOUSE_CLICKED`**，只派发
+`MOUSE_PRESSED → [MOUSE_DRAGGED] → MOUSE_RELEASED` —— 这正是真机手抖时系统交给组件的序列。
+
+| 用例 | 钉住什么 |
+|---|---|
+| `plainComponentFiresOnPressAndReleaseWithoutAnyClickEvent` | `HoloClick` 契约：没有 CLICK 也要触发 |
+| `plainComponentSurvivesJitterBetweenPressAndRelease` | 手抖 2px 仍触发 |
+| `plainComponentIgnoresAPressThatStartedOutside` | 从别处拖进来松手不触发（`armed` 判定） |
+| `plainComponentIgnoresAReleaseThatEndedOutside` | 按下后拖出去松手不触发 |
+| `barActionFiresOnPressAndReleaseWithoutAClickEvent` | **本次报的按钮**：`顶` 必须触发 |
+| `barActionSurvivesJitterBetweenPressAndRelease` | 手抖时 `顶` 仍触发 |
+| `barActionTopAndBottomActuallyScrollTheGrid` | 「底 → 顶」连续三轮，网格**真的**滚到两端（不只看回调） |
+| `disabledBarActionDoesNotFire` | 置灰项不触发 |
+| `popupMenuRowFiresOnPressAndReleaseWithoutAClickEvent` | 弹出菜单行同理 |
+| `everyFixedWidgetUsesHoloClick` | 6 个文件都改用 `HoloClick`（源码扫描兜底） |
+| `noWidgetInTheseFilesOverridesMouseClickedAlone` | 这 5 个文件里不再有 `mouseClicked` 覆写 |
+
+`barActionTopAndBottomActuallyScrollTheGrid` 是**事后补的**，因为它才是真正复刻用户所见的那条：
+前六条只证明「回调被触发」，而用户说的是「点了没反应」—— 得看
+`myGridView` 的**真实滚动值**。它建 60 个关卡，按「底 → 顶」轮换点三轮，每轮都必须精确落到两端。
+
+**已做「会红」验证**：把 `myActionBar.BarAction` 临时改回 `mouseClicked` 后重跑，恰好红 4 条
+（`barActionFiresOnPressAndReleaseWithoutAClickEvent`、
+`barActionSurvivesJitterBetweenPressAndRelease`、
+`barActionTopAndBottomActuallyScrollTheGrid`、
+`noWidgetInTheseFilesOverridesMouseClickedAlone`），其余 7 条保持绿；改回即全绿。
+其中新那条报的是 `expected:<178> but was:<0>` —— 与真机现象一字不差。
+
+同时更新两个**模拟点击**的测试辅助（它们原先直接派发 `MOUSE_CLICKED`，恰好是最不可靠的那条
+路径）：`Phase19GameViewOptionsMenuTest.clickRow`、`Phase16RecogViewTest.clickListener`，
+改为「按下 → 抬起」。⚠️ 两处都要先 `setSize(getPreferredSize())`：组件未上屏时尺寸是 0×0，
+`contains()` 一律为假。
+
+`myActionBar` 另加了一个测试钩子 `getBarActionComponentForTest(String)` —— 原有的
+`fireBarAction(String)` 是「直接调 action」，绕过了鼠标事件，验证不了点击契约。
+`myGridView` 补了 `getScrollValueForTest()` / `getScrollMaxForTest()` 两个读数钩子，
+供上面那条滚动用例使用。
+
+> ⚠️ **写这条用例踩过的坑**：`dispatchEvent` 的事件坐标是**收件组件自身**坐标系，不是父容器的。
+> 用父容器坐标去派发，`contains()` 一律为假 —— 会把自己骗成「事件送到了，但滚动没生效」，
+> 从而去追一个根本不存在的滚动 bug。复核时务必先用 `getDeepestComponentAt` 拿到真正接事件的
+> 组件，再 `convertPoint(父, 点, 该组件)`。
+
+### 6. 复核（2026-10-09 深夜）—— 用真鼠标 + 真数据重验
+
+上一轮的「会红验证」只证明用例本身会红，**不能证明用户手上就不红了**。所以这一轮改用
+`java.awt.Robot` 走**完整原生链路**（Windows 原生层 → `LightweightDispatcher` → 组件）复核，
+用 `Robot` 同时把到达组件的鼠标事件序列记录下来：
+
+| 复核方式 | 次数 | 结果 |
+|---|---|---|
+| 合成 `PRESSED/RELEASED`（坐标换算到组件自身坐标系） | 6 | 0 漏 |
+| Robot 真实点击：慢速轮换 | 12 | 0 漏 |
+| Robot 真实点击：快速轮换（按下即抬起） | 20 | 0 漏 |
+| Robot 真实点击：**按下期间手抖 ±6px** | 16 | 0 漏 |
+| Robot 真实点击：贴右下角边缘 | 16 | 0 漏 |
+| Robot 真实点击：**真实关卡集 8「696」**（696 关、真缩略图），缩略图**加载中**轮换 | 16 | 0 漏 |
+| Robot 真实点击：同上，缩略图**全部刷完**后轮换 | 16 | 0 漏 |
+
+合计 **102 次点击，0 漏**。手抖那一组的记录恰好抓到了实证：
+`顶[ENTERED+PRESSED+EXITED+ENTERED+RELEASED]` —— **没有 `CLICKED`**，但滚动照常发生。
+这就是「`mouseClicked` 会被吞、`mouseReleased` 不会」的直接证据。
+
+### 7. 关于用户反馈的「问题依然存在」
+
+复核期间用户反馈「连续轮换点击顶和底依然存在不响应」。逐项排查后，**没有找到修复之外的第二处缺陷**，
+证据指向「跑的不是含修复的构建」：
+
+| 证据 | 内容 |
+|---|---|
+| 修复落盘时间 | `compat/HoloClick.java` 03:07:11、`myActionBar.java` 03:12:57 |
+| 应用最后启动时间 | `~/.boxman/DataBase/BoxMan.db` 最后写入 **02:57:13** —— **早于修复 10 分钟**；`~/.boxman` 下 03:00 之后无任何文件变动 |
+| 另一份检出 | `D:/Users/sms/Desktop/Repos/boxman`（`main`，落后 3 个提交）里**没有** `HoloClick.java`，`myActionBar.java:332/384/442` 仍是 `mouseClicked`；其 `desktop/.gradle` 在 02:54 有构建痕迹 |
+| 修复的存放位置 | 本轮修复**尚未提交**，只存在于 `workbuddy/main-e7715010` 这个 worktree 里 |
+
+**结论**：修复本身经 102 次真鼠标复核成立；「依然存在」最可能是启动的应用不含修复
+（跑了别的检出，或没有重新编译）。**下一步**：提交本修复，并确认启动目录。
+
+### 8. 基线
+
+**50 个用例类 / 523 个测试用例，0 失败 0 错误 0 跳过**（+1 类 / +11 例 = `Phase40ReliableClickTest`）。
+
+> ⚠️ 另有两处**既存**的偶发失败，与本次改动**无关**（全量跑才有，单独跑必过）：
+> `Phase26PicListAndFileExplorerTest.picListDeleteRemovesTheFileAndTheListEntry`
+> 的「文件应被删除」断言（疑似 Windows 下文件仍被后台缩略图线程占用，`File.delete()` 静默返回
+> `false`）；以及 `Phase19GameViewOptionsMenuTest` 的
+> `testImportedForwardActionRunsAfterActionWindowCloses` /
+> `testLongPressingRedoContinuesAnswerPlaybackAfterRelease`（长按与「导入动作」的时序断言）。
+> 连续跑两遍全量：一遍只红 `Phase26` 那条，一遍全绿 —— 典型的顺序/时序敏感。
+> 建议单独排查 —— 它们会让「全量绿」不稳定。
+
