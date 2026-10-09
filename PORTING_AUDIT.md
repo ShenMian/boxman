@@ -1,7 +1,7 @@
 # PORTING.md 执行情况审计
 
 审计时间：2026-09-24
-**最近刷新：2026-09-25**（阶段 A~G 全部收口后重跑；见第 0 节与第 7 节）
+**最近刷新：2026-10-09**（阶段 A~G 收口之后的「遗留待办」全部做完；见第 0 节、第 4 节与文末「阶段 H」）
 审计对象：`PORTING.md`（移植计划书） vs `desktop/`（实际产物）
 审计方式：类清单/行数对比、`res/menu/*.xml` 逐项匹配、`res/layout/*.xml` 控件核对、
 `javac` 全量编译、全量测试运行、源码逐段对读。
@@ -12,7 +12,7 @@
 
 > **本节是「当前口径」，随每次收口刷新。** 首次审计（2026-09-24）的逐条结论保留在
 > 第 1~7 节里，各节标题上的状态标记已就地改成现状。
-> **本次刷新：2026-09-25，阶段 A~G 全部收口之后。**
+> **本次刷新：2026-10-09，阶段 I（遗留待办收口）之后。**
 
 ### 0.1 逐阶段：审计时 → 现在
 
@@ -22,10 +22,10 @@
 | 阶段 1 平台兼容层 | ✅ 执行，但**留了一个会静默毁库的健壮性 bug** | ✅ 缺陷已修（阶段 A） |
 | 阶段 2 核心游戏视图 | ✅ 忠实执行（行数甚至超过原版） | ✅ 不变 |
 | 阶段 3 主界面与导航 | ⚠️ `mySubmit` / `OpenState` 缺失 | ✅ 已回补（阶段 C） |
-| 阶段 4 次要视图 | ⚠️ 窗口都在，但功能普遍缩水 30%~80% | ✅ 已回补（阶段 D-1 / D-2 + G ①③⑤），保留率升到 **46%~119%** |
-| 阶段 5 对话框 | ✅ 执行，且**保真度高于计划书要求** | ✅ 不变 |
+| 阶段 4 次要视图 | ⚠️ 窗口都在，但功能普遍缩水 30%~80% | ✅ 已回补（阶段 D-1 / D-2 + G ①③⑤ + H），保留率升到 **76%~151%** |
+| 阶段 5 对话框 | ✅ 执行，且**保真度高于计划书要求** | ✅ 不变；阶段 H 把最后 22 处裸 `JOptionPane` 也换成 Holo 载体 |
 | 阶段 6 菜单系统 | ❌ **执行得最差**，84 项缺 28~47 项 | ✅ **81 项 / strict 缺 0 / loose 缺 0** |
-| 阶段 7 测试与打包 | ⚠️ 测试 57 项全绿，**没有打包** | ✅ 39 类 / 412 用例全绿；jpackage 已补（阶段 F） |
+| 阶段 7 测试与打包 | ⚠️ 测试 57 项全绿，**没有打包** | ✅ 53 类 / 563 用例全绿；jpackage 已补（阶段 F） |
 | 四条移植原则 | ⚠️ 原则 1（布局）大致守住；原则 2/3 有明确违反 | ✅ 原则 2/3 的违反已逐条清掉（见第 2、4 节） |
 
 ### 0.2 总体判断
@@ -38,27 +38,35 @@
 
 - **功能面**：`PORTING.md` 点名的映射项全部落地；菜单保真度 **81 / strict 缺 0 / loose 缺 0**。
 - **结构面**：全项目**无 `JMenuBar`**、**无裸 `new JPopupMenu()` / `new JMenuItem()`**、
-  **无 `JFileChooser`**、**无 `myActionBar.NO_OP` 占位项** —— 全部由源码扫描式测试锁死。
-- **测试面**：**39 个用例类 / 412 个用例 / 0 失败**，`./gradlew --offline clean test` 全绿。
+  **无 `JFileChooser`**、**无裸 `JOptionPane` 载体**、**无 `myActionBar.NO_OP` 占位项**、
+  **无把点击动作挂在 `mouseClicked` 上的控件** —— 全部由源码扫描式测试锁死。
+- **测试面**：**53 个用例类 / 563 个用例 / 0 失败**，`./gradlew --offline clean test` 全绿。
 
 **仍然存在的偏差**（不掩盖，逐条留在文里）：
 
 | 项 | 说明 |
 |---|---|
-| 窗口尺寸 | 15 个全屏窗口已是 370×780；**11 个 `AlertDialog` 等价物仍是 PC 尺寸（340~540 宽）**，待处理 |
-| 窗口主题 | `myAbout` / `myAbout1` / `myAbout2` / `Help` / `myExport` 没套原版 `Theme.Holo` 的深色 `windowBackground`（纯黑）；`myGameView.showSetup2Dialog` 应改回 `HoloAlertDialog` + 多选列表（阶段 G ⑤ 新开条目）。**注**：这一条讲的是对话框的**载体 / 主题**，与它列出的**条目内容**是两件事 —— 条目清单已于 2026-10-09 对齐到 17 项，见文末「UI 对齐」一节 |
-| 兼容性验证 | 只在 **Windows + JDK 26** 上验证过；macOS / Linux / JDK 8·17·21 未测（计划书 7.2） |
-| 行数仍有差距 | `myExport` 46%、`myFindView` 77%、`myEditView` 79%、`myGameView` 82% —— 缩掉的部分已逐项核过，剩下的是 Android 样板（`findViewById` / `AlertDialog` / `Menu`），但**没有再做逐行复核** |
-| 细节口径 | `myActGMView` 按钮行仍用 `4dp` strut 而非原版的 `layout_margin="2dp"`；`myFindView` 相似度闸门分母取源关卡面积、`ARGB_4444` 量化等「照抄原版怪癖」的地方，见各阶段小节 |
+| 兼容性验证 | **只在 Windows + 上跑过**（JDK 26 / 27 实测通过）；macOS / Linux / JDK 8·17·21 **仍未测**（计划书 7.2）。<br>2026-10-09 与用户确认：**跳过跨平台验证，只留文档说明** —— 这里就是那句说明。代码里唯一与平台相关的分支是 `BoxManPC.getUserDirectory()`（按 `os.name` 走 Windows 注册表 / XDG `user-dirs.dirs` / 兜底目录名），`Phase26PicListAndFileExplorerTest.downloadsDirectoryUsesPlatformAppropriateResolution` 已把三条分支**按参数化方式**覆盖（不依赖真机是哪个系统）。 |
+| 行数仍有差距 | `myEditView` 79%、`myFindView` 76% —— 2026-10-09 已**逐方法核对**，缺的全是 Android 框架回调（`onCreate`/`onDestroy`/`onCreateOptionsMenu`/`onOptionsItemSelected`/`onStartTrackingTouch`/`onProgressChanged`/`onCheckedChanged`/`onClick`/`onLongClick`/`getView`/`getDropDownView`/`setContentView`/`startActivity`/`hideSystemUI`…），PC 侧折进构造器 / `initUI()` / `myActionBar` / Swing 监听器；**没有一个功能方法缺失**。详见「阶段 H §6」。 |
+| 细节口径 | 见各阶段小节里标注的「照抄原版怪癖」之处（如 `myFindView` 相似度闸门分母取源关卡面积、`ARGB_4444` 量化）。2026-10-09 已把 `myActGMView` 按钮行的 `4dp` strut 改回原版的 `layout_margin="2dp"`。 |
 
-> 逐阶段的**证据与改法**在第 1~7 节；阶段 A~G 的收口记录在「阶段 A」…「阶段 G ⑤」各小节。
+> 2026-10-09 收口掉的四条（原表在此）：
+> ① 11 个 `AlertDialog` 等价物是 PC 尺寸 —— 复核后确认 **`HoloAlertDialog` 本来就是 352dp**
+>   （`dialog_min_width_minor = 95%` × 370），真正的「PC 尺寸 / 浅色」载体是 22 处裸 `JOptionPane`，已全部换成 Holo 载体并锁死；
+> ② 5 个窗口没套 Holo 深色 `windowBackground` —— 已套；
+> ③ `myGameView.showSetup2Dialog` 应改回 `HoloAlertDialog` + 多选列表 —— 已改；
+> ④ 剩余 7 处 `mouseClicked` 点击契约 —— 已改。
+> 逐条证据见「阶段 I」。
+>
+> 逐阶段的**证据与改法**在第 1~7 节；阶段 A~G 的收口记录在「阶段 A」…「阶段 G ⑤」各小节，
+> 阶段 I（2026-10-09）在文末。
 
-代码健康度（2026-09-25 实测）：
+代码健康度（2026-10-09 实测）：
 
 ```
-主源码 98 个 .java  → javac 零错误（0 error）
-测试源 39 个 .java  → javac 零错误
-测试运行            → 39 个用例类 / 412 个用例 全部通过
+主源码 101 个 .java → javac 零错误（0 error）
+测试源 53 个 .java  → javac 零错误
+测试运行            → 53 个用例类 / 563 个用例 全部通过（0 失败 0 错误 0 跳过）
 菜单保真度          → 81 项 / strict 缺 0 / loose 缺 0
 ```
 
@@ -195,24 +203,24 @@ build/test_boxman_phase5nullDataBase/BoxMan.db    size=0          tables=[]
 `myStateBrow.loadSelected()` 还把 `load_State()` 的返回值丢掉了。
 两处均已修复。
 
-### 阶段 4：次要视图 — ✅ 已回补（阶段 D-1 / D-2 + G ①③⑤，2026-09-25）
+### 阶段 4：次要视图 — ✅ 已回补（阶段 D-1 / D-2 + G ①③⑤ + I，2026-10-09）
 
-> 下表 PC 列已按 2026-09-25 的**磁盘实际行数**刷新（审计当时那版是回补前的旧值）。
+> 下表 PC 列已按 **2026-10-09 的磁盘实际行数**再刷一遍（`myExport` 在阶段 H 重写后从 223 → 414 行）。
 
 | 文件 | 原版 | PC | 保留率 |
 |------|------|-----|-------|
-| `myEditView.java` | 2,407 | 1,904 | 79%（阶段 D-2 重写） |
-| `myFindView.java` | 692 | 532 | 77%（阶段 D-2 重写） |
-| `myRecogView.java` | 831 | 991 | 119%（阶段 D-2 重写） |
-| `myRecogViewMap.java` | 1,047 | 1,171 | 112%（阶段 D-2 重写；原版把算法拆在匿名类里，PC 展开成具名方法） |
-| `myStateBrow.java` | 1,018 | 1,165 | 114%（阶段 D-1 重写；同上） |
-| `myActGMView.java` | 824 | 749 | 91%（阶段 D-2 重写；阶段 G ⑤ 换 HoloButton） |
-| `myExport.java` | 481 | 223 | 46%（阶段 G ⑤ 订正按钮文案 + HoloButton） |
-| `myPicListView.java` | 258 | 291 | 113%（阶段 G ① 重写） |
-| `mySolutionBrow.java` | 304 | 270 | 89%（阶段 G ③ 整体重做） |
-| `myGridView.java` | 1,810 | 1,773 | 98%（阶段 D-2 + G ②④ 补 14 项上下文菜单） |
-| `myGameView.java` | 5,906 | 4,867 | 82%（阶段 D-3 / F / G ④） |
-| `BoxManPC.java`（原版 `BoxMan.java`） | 2,006 | 1,921 | 96%（阶段 G ⑦ 补 10 项上下文菜单） |
+| `myEditView.java` | 2,414 | 1,921 | 79%（阶段 D-2 重写；阶段 H 逐方法复核，缺的全是框架回调） |
+| `myFindView.java` | 692 | 532 | 76%（阶段 D-2 重写；阶段 H 逐方法复核，缺的**全是**框架回调） |
+| `myRecogView.java` | 831 | 996 | 119%（阶段 D-2 重写） |
+| `myRecogViewMap.java` | 1,053 | 1,214 | 115%（阶段 D-2 重写；原版把算法拆在匿名类里，PC 展开成具名方法） |
+| `myStateBrow.java` | 1,018 | 1,198 | 117%（阶段 D-1 重写；同上） |
+| `myActGMView.java` | 824 | 755 | 91%（阶段 D-2 重写；阶段 G ⑤ 换 HoloButton） |
+| `myExport.java` | 481 | 414 | **86%**（阶段 I 重写，原 223 行 / 46%） |
+| `myPicListView.java` | 258 | 392 | 151%（阶段 G ① 重写；阶段 I 补缩略图生命周期闸门） |
+| `mySolutionBrow.java` | 304 | 273 | 89%（阶段 G ③ 整体重做） |
+| `myGridView.java` | 1,810 | 1,803 | 99%（阶段 D-2 + G ②④ 补 14 项上下文菜单） |
+| `myGameView.java` | 5,906 | 5,313 | **89%**（阶段 D-3 / F / G ④ / I；原 4,867 / 82%） |
+| `BoxManPC.java`（原版 `BoxMan.java`） | 2,083 | 2,171 | 104%（阶段 G ⑦ 补 10 项上下文菜单；阶段 I 换 8 处 Holo 载体） |
 
 （缩水本身可以理解 —— Android 的 `findViewById`/`AlertDialog`/`Menu` 样板占很大比重。
 下面的逐项核对显示，**缩掉的不只是样板** —— 这正是阶段 D-2 重写 `myRecogView` 时
@@ -3238,23 +3246,29 @@ HoloClick.install(component, e -> { ... });   // 按下在控件内 + 抬起仍�
 | `myFileExplorerActivity` | 文件列表 | `mouseClicked` |
 | `myRecogView` | `SimilarityBox`（相似度方块） | `mouseClicked` |
 
-### 4. ⚠️ 同一缺陷仍在的地方（本轮未改）
+### 4. ✅ 同一缺陷的其余 7 处（阶段 I 已全部收口）
 
-`grep -rn "mouseClicked" desktop/src/main/java` 后逐个核对，以下几处**也**把点击动作挂在
-`mouseClicked` 上，只是都还配着 `mousePressed` / `mouseReleased`（用于长按 / 双击判定），
-需逐个确认语义后再改，故本轮未动：
+阶段 40 只改了 8 处，剩下这 7 处**也**把点击动作挂在 `mouseClicked` 上，当时因为
+「都还配着 `mousePressed` / `mouseReleased`（用于长按 / 双击判定），需逐个确认语义」而未动。
+2026-10-09 逐处改完，判据是**按下时记住的那一行**而不是抬起时重算的那一行：
 
-| 文件:行 | 挂在 `mouseClicked` 上的动作 |
-|---|---|
-| `myStateBrow.java:244` | 单击子项 = 载入该状态 / 答案并结束（原版 `onChildClick`） |
-| `mySolutionBrow.java:124` | 单击子项（原版 `onChildClick`） |
-| `myRecogView.java:879` | 单击（带长按抑制 `suppressClick`） |
-| `myRecogViewMap.java:699` | `onSingleTapUp` / `onDoubleTap` |
-| `myFindViewMap.java:453` | `onSingleTapUp` / `onDoubleTap` + 两个按钮热区 |
-| `myEditViewMap.java:683` | 双击边界 = `My_ReSize` |
-| `BoxManPC.java:526` | 单击关卡集条目（已有 `pressedPath` 兜底，见 `:2691` 那条记录） |
+| 文件 | 挂过 `mouseClicked` 的动作 | 改法 |
+|---|---|---|
+| `myStateBrow.java` | 单击子项 = 载入该状态 / 答案并结束（原版 `onChildClick`） | `mousePressed` 记 `armed` + `pressedPath`（取自 `tree.getSelectionPath()`），`mouseReleased` 用 `path.equals(pressed)` 判定。**依据**：JDK `BasicTreeUI.Handler.handleSelection` 的 `mousePressed` 是「先 `setSelectionPath` 再 `toggleExpandState`」，所以按下时刻的 `getSelectionPath()` 就是被点中的那一行；而 `getPathForLocation` 拿到的是**展开之后**的布局，两者不能互换 |
+| `mySolutionBrow.java` | 单击子项（原版 `onChildClick`） | 同上；顺手删掉了多余的 `mouseClicked`（真正动作在 `onContextItemSelected(5)`） |
+| `myRecogView.java` | 单击（带长按抑制 `suppressClick`） | 改在 `mouseReleased` 触发，`suppressClick` 字段**删掉**，换 `longFired` —— 长按已触发就不再补一次单击 |
+| `myRecogViewMap.java` | `onSingleTapUp` / `onDoubleTap` | 新增 `compat/HoloTap.java`（`GestureDetector.onDoubleTap` 的等价物：两次 `mouseReleased` 落在 `awt.multiClickInterval` 与 24px 内）；`mouseClicked` 留空 |
+| `myFindViewMap.java` | `onSingleTapUp` / `onDoubleTap` + 两个按钮热区 | 同上；拖动超过 `HoloTap.SLOP` 时 `reset()` |
+| `myEditViewMap.java` | 双击边界 = `My_ReSize` | 同上，抽出 `doDoubleTap(x, y)` |
+| `BoxManPC.java` | 单击关卡集条目 | `mouseReleased` + `armed`/`pressedPath` + `if (!path.equals(pressed)) return;`；右键菜单改判 `e.isPopupTrigger() \|\| SwingUtilities.isRightMouseButton(e)` |
 
-（`myGameViewMap.java:240` 的 `mouseClicked` 是**空实现**，不必改。）
+⚠️ 三处地图面板原来用 `startX/startY` 判双击，但这两个字段**会被 `mouseDragged` 改写** ——
+所以新增了 `pressX/pressY` 专门记按下点，不能用 `startX/startY`。
+
+现在主源码里 `mouseClicked` **一个动作都不剩**（`myEditViewMap` / `myFindViewMap` /
+`myRecogViewMap` / `myGameViewMap` 四处是**空实现**，保留是为了不改动
+`implements MouseListener` 的形状），由 `Phase43ClickContractTest` 的
+`everyMouseClickedOverrideInMainSourcesIsEmpty` 全库扫描锁死。
 
 ### 5. 回归测试
 
@@ -3360,14 +3374,168 @@ cd D:/Users/sms/Desktop/Repos/boxman/desktop && ./gradlew test --offline
 
 ### 8. 基线
 
-**50 个用例类 / 523 个测试用例，0 失败 0 错误 0 跳过**（+1 类 / +11 例 = `Phase40ReliableClickTest`）。
+**53 个用例类 / 563 个测试用例，0 失败 0 错误 0 跳过**
+（50/523 → +`Phase41`(9) → +`Phase42`(15) → +`Phase43`(13) → +`Phase26`/`Phase30` 各补 1、2 条）。
 
-> ⚠️ 另有两处**既存**的偶发失败，与本次改动**无关**（全量跑才有，单独跑必过）：
-> `Phase26PicListAndFileExplorerTest.picListDeleteRemovesTheFileAndTheListEntry`
-> 的「文件应被删除」断言（疑似 Windows 下文件仍被后台缩略图线程占用，`File.delete()` 静默返回
-> `false`）；以及 `Phase19GameViewOptionsMenuTest` 的
-> `testImportedForwardActionRunsAfterActionWindowCloses` /
-> `testLongPressingRedoContinuesAnswerPlaybackAfterRelease`（长按与「导入动作」的时序断言）。
-> 连续跑两遍全量：一遍只红 `Phase26` 那条，一遍全绿 —— 典型的顺序/时序敏感。
-> 建议单独排查 —— 它们会让「全量绿」不稳定。
+> ✅ 上一版记的「两处既存偶发失败」**已排查并修掉**，根因不是「时序敏感」这么含糊 —— 见「阶段 H §4」。
+> 现在 `./gradlew --offline clean test` 连跑两次全绿；另用「单 JVM 直接跑全部 53 个类」的方式
+> 又跑了多次，也是全绿。
+
+---
+
+## 阶段 I：遗留待办收口（2026-10-09）
+
+用户指令：**「先把剩下的待办事项完成了」**。本轮把第 0.2 节「仍然存在的偏差」里
+四条 + 第 4 节「本轮未改」的 7 处 + 两处偶发失败全部做完。UI 布局**一处未动**，
+只按用户明确的要求「开关选项的 UI 布局不变，配色遵循原版」调了配色。
+
+### 1. 5 个窗口套上原版 Holo 深色 `windowBackground`
+
+`myAbout` / `myAbout1` / `myAbout2` / `Help` / `myExport` 现在都走
+`HoloContent.applyWindowBackground(this)` —— 原版是
+`@color/background_holo_dark = #FF000000`，即纯黑。锁在
+`Phase41ExportAndWindowThemeTest.aboutAndHelpWindowsUseTheHoloDarkWindowBackground`。
+
+### 2. 22 处裸 `JOptionPane` → Holo 载体（这是「窗口尺寸 / 主题」两条的真正内容）
+
+复核后发现原表那句「11 个 `AlertDialog` 等价物仍是 PC 尺寸（340~540 宽）」**是错的**：
+那段文字出自 `HoloAlertDialog` 自己的类注释，讲的是它**取代掉**的旧状态。
+实测 `HoloAlertDialog.windowWidth()` = `round(370 × 95/100)` = **352dp**
+（`alert_dialog_holo.xml` 的 `dialog_min_width_minor = 95%`），`grep` 全库也没有
+`setSize(3xx~5xx, …)`。
+
+真正「PC 尺寸 + 浅色」的载体是**裸 `JOptionPane`**：`myGameView` 12 处、`BoxManPC` 8 处、
+`myGridView` 2 处，共 22 处，本轮全部换成 Holo 载体：
+
+| 场景 | 换成的载体 |
+|---|---|
+| 「答案或状态太长，保存到文档！」等**定时器回调里**弹的框 | `HoloConfirmDialog.showNonModal` / `HoloMessageDialog.showNonModal` —— **必须非模态** |
+| 「重新开始，确定吗？」 | `HoloConfirmDialog`（模态），重置逻辑搬进回调 |
+| 「关闭调试」 | 还原成原版的**复选框**「关卡回到该『宏』打开前的状态」（PC 此前退化成 YES/NO 确认） |
+| 「设置…」 | 还原成原版的**单选列表**（父框不动，只有「返回」），并拆出 `showSpeedDialog` / `showSkinDialog` / `showBkPicDialog` |
+| 「选择：宏」 | `HoloChoiceDialog.selectThenOk`，不预选 |
+| 每行图标个数 | 原版的 11 项菜单 `{自动, 1 个 … 10 个}` |
+| 转到第几关 | 复活 `GotoDialog` |
+| 关卡集名称 | `HoloInputDialog` |
+| 导入 / 创建失败等 6 条 | `HoloMessageDialog` |
+
+⚠️ **模态 / 非模态才是真正的坑，不是宽度**：`UpData1`（1ms 定时器回调）会调
+`saveAns` / `saveAns2`，它们的框若用模态，就会在 EDT 上开嵌套事件循环，
+而那个定时器在嵌套循环里照旧触发 → 同一个框一层层叠着弹 → 用户看到的是「点了就卡死」。
+`Phase42HoloDialogCarrierTest.animationCallbacksAndTheirCalleesContainNoBlockingDialog`
+把这条锁死；`noPcNativeDialogCarriersRemain` 锁死「不再有裸 `JOptionPane`」。
+
+（现在主源码里还剩 13 处 `JOptionPane` 字样，**全部在注释里**。）
+
+### 3. `myActGMView` 按钮行还原 `2dp` margin
+
+原先用 `4dp` strut，已改回原版 `layout_margin="2dp"`；
+`Phase41ExportAndWindowThemeTest.actGmButtonRowRestoresTheOriginalMargins` 锁住。
+
+### 4. 两处偶发失败：根因（都不是「时序敏感」）
+
+#### 4.1 `Phase26…picListDeleteRemovesTheFileAndTheListEntry` —— 后台缩略图线程占着文件
+
+`myPicListView.loadVisibleThumbnails()` 的闸门原本是 `isDisplayable()`。但构造器末尾的
+`UiWindow.applyPhoneSize()` 会 `pack()`，而 `pack()` 内部 `addNotify()` 一执行
+`isDisplayable()` **就为真** —— 于是「只 `new`、从不 `show`」的窗口照样在后台解码缩略图。
+解码走 `ImageIO.createImageInputStream(File)`（Windows 上是 `RandomAccessFile`，
+不带 `FILE_SHARE_DELETE`），只要线程还开着文件，同时刻的 `File.delete()`
+就**静默返回 `false`** —— 用户在列表里删掉一条，文件其实还在。
+
+**实测（一次性探针）**：给一个从未 `show` 的 `myPicListView` 塞 5000×5000 的 PNG，
+构造后 30ms 内删除 → **5/5 全部删不掉**；换成 2600×2600 等到 30ms（解码已结束）→ 5/5 成功。
+全量跑时解码窗口与删除的先后取决于调度，所以只在全量跑偶发红。
+
+**修法**：闸门改成 `isShowing()`（等价于原版 —— Android 的 `GridView` 只绑定**已上屏**的子视图）。
+`setVisible(true)` 后照常加载（构造器里本就挂了 `componentShown`）。
+回归锁 `Phase26…picListDoesNotDecodeThumbnailsBeforeTheWindowIsShown`：
+把闸门改回 `isDisplayable()` 时**必红**（已验证）。
+
+#### 4.2 `Phase19…testLongPressingRedoContinuesAnswerPlaybackAfterRelease` —— 150ms 余量太薄
+
+长按是 `attachLongPress` 里的 **500ms 单发** `Timer`，而用例写死 `Thread.sleep(650)`。
+**实测长按生效时刻是 502~528ms** —— 余量只有 ~148ms。机器一忙，TimerQueue/EDT 晚于
+650ms 才派发，松手先到 → `mouseReleased` 里 `timer.stop()` → 长按**永远不触发** →
+`m_bYanshi` 仍是 `false`、`m_nStep` 仍是 0，两条断言一起红。
+
+**修法**：改成轮询「长按真的生效」（`m_bYanshi == true`，上限 5s）再松手。
+**会红验证**：把长按定时器临时改成 2000ms（远超 650ms）——
+老写法必红（`AssertionError: 松开长按的前进按钮后，答案演示应继续`），轮询写法照旧全绿。
+
+#### 4.3 `Phase19…testImportedForwardActionRunsAfterActionWindowCloses` —— 缺 happens-before
+
+用例靠「`mMicroTask` 变 `null`」判定任务跑完，而 `mMicroTask` 由 `done()` 在 EDT 上置空、
+`doInBackground` 在 worker 线程上改 `m_nCol` —— 这是个**跨线程发布**，但字段是普通字段，
+没有 happens-before：轮询方可能「看到任务已结束，却看不到任务挪过的那一格」，
+于是 `assertEquals(initialCol + 1, m_nCol)` 间歇性失败。
+
+**修法**：`mMicroTask` / `mTask` 都加 `volatile`
+（`mTask` 同理：`AsyncCountBoxsTask.isCurrent()` 在 worker 线程读它）。
+`Phase30StaleTaskGuardTest.testTaskFieldsArePublishedAcrossThreads` 用**反射**锁住 `volatile`
+（比源码扫描稳，不怕重排格式）。
+
+#### 4.4 顺手修掉一条未捕获的 EDT 异常
+
+排查 4.2/4.3 时在 stderr 里捞到：
+`NullPointerException: Cannot invoke "javax.swing.Timer.isRunning()" because "timer" is null`。
+
+根因：`myStop()` 把 `myTimer1..4` 一起置空，但**已经排进 EDT 队列的那一拍动画照样会执行** →
+走到 `sleepTimer(null, ms)` 就崩。关窗口 / 切关的瞬间正好会走到这条路径。
+修法：`sleepTimer()` 把 `null` 当成「停表」直接返回（语义上正是如此）。
+锁在 `Phase30…testStaleAnimationTickAfterStopDoesNotThrow`（改回去必红，已验证）。
+
+### 5. 跨平台验证：按用户要求跳过
+
+用户答复「跳过，只留文档说明」。已在第 0.2 节写明现状与理由，不再另开待办。
+
+### 6. 行数保留率复核（原表「没有再做逐行复核」那条）
+
+`myExport` 已在阶段 I 重写（223 → 414 行 / 86%）。剩下两个低于 80% 的
+（`myEditView` 79%、`myFindView` 76%）本轮**逐方法核对**：
+
+把两边的方法名集合差出来看，「原版有、PC 无」的名单**全是 Android 框架回调** ——
+
+```
+myEditView：onCreate onDestroy onCreateOptionsMenu onOptionsItemSelected onOptionsMenuClosed
+            onKeyDown onKeyUp onLongClick onClick onCheckedChanged onStartTrackingTouch
+            onStopTrackingTouch onProgressChanged onWindowFocusChanged onRestart
+            setContentView findViewById(→getMap/getView/getDropDownView) getMenuInflater
+            requestWindowFeature hideSystemUI showSystemUI startActivity registerReceiver
+            onReceive invalidateOptionsMenu finish getWindow
+myFindView：onCreate onCreateOptionsMenu onOptionsItemSelected onKeyDown onKeyUp
+            setContentView getMenuInflater startActivity finish openOptionsMenu
+```
+
+`myFindView` 的缺失集合 **100% 是框架回调**。`myEditView` 里唯一两个看着像功能的
+（`cutXSB`、`setCentered`）也都对得上：`cutXSB` = 剪切板 XSB 解析，PC 侧在
+`applyImport()` 里（`isLURD` → `LurdToXSB`，否则 `myMaps.loadXSB`）；
+`setCentered` 是原版**匿名内部类**里的 Spinner 适配器辅助方法，PC 用 JComboBox 自带渲染器。
+
+**结论：没有功能方法缺失，差距就是框架样板。**
+
+### 7. 一个可复用的排查手法（下次查 flake 直接用）
+
+Gradle 跑一次单类要 1~2 分钟，排查 flake 时太慢。可以直接用 JDK 起 JUnit：
+
+```bash
+# ① classpath 分隔符用 `;`，且必须 MSYS_NO_PATHCONV=1
+#    —— 否则 Git Bash 会改写 `D:/...`，症状极具误导性：junit 能找到、hamcrest/sqlite 找不到
+# ② 必须带上 slf4j-api：sqlite-jdbc 的 org.sqlite.JDBC 静态块要 org.slf4j.LoggerFactory，
+#    少了它 DriverManager 的 ServiceLoader 会**静默吞掉**初始化失败
+#    （loadInitialDrivers 里 catch Throwable），报出来的是「No suitable driver found for jdbc:sqlite:…」
+MSYS_NO_PATHCONV=1 java -cp "$CP" org.junit.runner.JUnitCore \
+    $(cat /tmp/allclasses.txt | tr '\n' ' ')          # 全部 53 个类塞进同一个 JVM ≈ 155s
+```
+
+**这一步很关键**：偶发失败几乎都依赖「同一个 JVM 里前面那些用例类留下的静态状态」，
+单独跑某个类永远复现不出来 —— 而把全部类塞进一个 JVM 就能复现，还比 Gradle 快一倍多。
+
+### 8. 阶段 I 基线
+
+**53 个用例类 / 563 个用例 / 0 失败 0 错误 0 跳过**；
+`./gradlew --offline clean test` 全绿；「全类同 JVM」方式重复跑亦全绿。
+本轮新增/改动：`Phase41ExportAndWindowThemeTest`(9)、`Phase42HoloDialogCarrierTest`(15)、
+`Phase43ClickContractTest`(13)、`compat/HoloTap`，
+以及 `Phase26` +1、`Phase30` +2 条回归锁。
 

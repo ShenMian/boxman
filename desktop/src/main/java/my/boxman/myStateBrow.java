@@ -226,25 +226,50 @@ public class myStateBrow extends JFrame {
         });
 
         tree.addMouseListener(new MouseAdapter() {
+            /** 本次按下是否落在树内（HoloClick 的「按下在内 → 抬起仍在内」契约）。 */
+            private boolean armed;
+            /** 按下那一刻「按的是哪一行」的路径。 */
+            private TreePath pressedPath;
+
             @Override
             public void mousePressed(MouseEvent e) {
                 if (e.isPopupTrigger()) {
                     onPopup(e);
+                    return;
                 }
+                armed = tree.contains(e.getX(), e.getY());
+                // ⚠️ 必须在**按下**时定行，而且只能读 selection：
+                // BasicTreeUI 的监听器比我们<b>先</b>注册（setUI 在本方法之前），AWT 按注册顺序
+                // 派发，所以它已经跑完了。而 BasicTreeUI.Handler.handleSelection 的顺序是
+                //   ① tree.setSelectionPath(按下行)  ② toggleExpandState(按下行) → 展开 + 滚动
+                // （已核对 JDK 源码），所以此刻 getSelectionPath() 读到的正是「按下那一行」，
+                // 哪怕 ② 已经把下面的行整体挪走了。若改用 getPathForLocation，读到的会是展开
+                // **之后**的布局，坐标底下已经换成别的行 —— 那正是 BoxManPC 那条 Phase36 记录里的坑。
+                pressedPath = armed ? tree.getSelectionPath() : null;
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
+                // 抬起时鼠标底下是不是还是按下那一行（展开/滚动会让它错位）
+                TreePath at = tree.getPathForLocation(e.getX(), e.getY());
+                TreePath pressed = pressedPath;
+                boolean fire = armed && tree.contains(e.getX(), e.getY())
+                        && e.getButton() == MouseEvent.BUTTON1
+                        && pressed != null && pressed.equals(at);
+                armed = false;
+                pressedPath = null;
+
                 if (e.isPopupTrigger()) {
                     onPopup(e);
+                    return;
                 }
-            }
+                // 原版 onChildClick 走 ACTION_UP，对应 mouseReleased 而不是 mouseClicked：
+                // MOUSE_CLICKED 会被 Windows 原生层因「按住期间收到任何一次 WM_MOUSEMOVE」
+                // 吞掉（见 compat/HoloClick 的类注释），表现为「有时点一次没反应」。
+                if (!fire) return;
 
-            @Override
-            public void mouseClicked(MouseEvent e) {
                 // 原版 onChildClick：单击子项 = 载入该状态/答案并结束
-                if (e.getButton() != MouseEvent.BUTTON1 || e.isPopupTrigger()) return;
-                Object uo = userObjectAt(e.getX(), e.getY());
+                Object uo = userObjectAt(pressed);
                 if (uo instanceof ChildItem) {
                     ChildItem ci = (ChildItem) uo;
                     g_Pos = ci.groupPos;
@@ -354,6 +379,14 @@ public class myStateBrow extends JFrame {
 
     private Object userObjectAt(int x, int y) {
         TreePath path = tree.getPathForLocation(x, y);
+        if (path == null || !(path.getLastPathComponent() instanceof DefaultMutableTreeNode)) {
+            return null;
+        }
+        return ((DefaultMutableTreeNode) path.getLastPathComponent()).getUserObject();
+    }
+
+    /** 同上，但直接给路径 —— 点击契约要在按下瞬间定行，那时只有路径没有坐标。 */
+    private Object userObjectAt(TreePath path) {
         if (path == null || !(path.getLastPathComponent() instanceof DefaultMutableTreeNode)) {
             return null;
         }

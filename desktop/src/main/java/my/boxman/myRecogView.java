@@ -842,7 +842,7 @@ public class myRecogView extends JFrame {
         private Runnable onClick;
         private Runnable onLongClick;
         private Timer longPressTimer;
-        private boolean pressed, longFired, suppressClick;
+        private boolean pressed, longFired;
 
         FlatButton(String text, int w, int h, boolean consumeLongClick) {
             this.text = text;
@@ -853,11 +853,16 @@ public class myRecogView extends JFrame {
             setSize(d);
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             addMouseListener(new MouseAdapter() {
+                /** 本次按下是否落在按钮内（HoloClick 的「按下在内 → 抬起仍在内」契约）。 */
+                private boolean armed;
+
                 @Override
                 public void mousePressed(MouseEvent e) {
-                    pressed = true;
+                    armed = contains(e.getX(), e.getY());
+                    pressed = armed;
                     longFired = false;
                     cancelLongPress();
+                    if (!armed) return;
                     longPressTimer = new Timer(LONG_PRESS_MS, ev -> {
                         if (pressed) {
                             longFired = true;
@@ -870,17 +875,18 @@ public class myRecogView extends JFrame {
 
                 @Override
                 public void mouseReleased(MouseEvent e) {
+                    boolean inside = pressed && contains(e.getX(), e.getY());
                     pressed = false;
                     cancelLongPress();
-                    if (longFired && consumeLongClick) suppressClick = true;
-                }
-
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    if (suppressClick) {
-                        suppressClick = false;
-                        return;
-                    }
+                    if (!inside) return;
+                    // 原版：长按监听器返回 true（consumeLongClick）时，长按之后抬起**不再**触发 click
+                    if (longFired && consumeLongClick) return;
+                    // ⚠️ 动作挂 mouseReleased 而不是 mouseClicked：MOUSE_CLICKED 会被 Windows
+                    // 原生层因「按住期间收到任何一次 WM_MOUSEMOVE」吞掉（见 compat/HoloClick 的
+                    // 类注释），表现为「有时点一次没反应」。原版 View.OnClickListener 本来也是
+                    // ACTION_UP，对应 mouseReleased。
+                    // 顺带干掉了原来的 suppressClick 状态：那条「长按后不触发 click」的规则现在
+                    // 就在同一个方法里判掉，中间不再隔着一次可能被吞掉的事件，也就不会错位。
                     if (onClick != null) onClick.run();
                 }
             });

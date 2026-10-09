@@ -30,6 +30,7 @@ import my.boxman.compat.HoloAlertDialog;
 import my.boxman.compat.HoloChoiceDialog;
 import my.boxman.compat.HoloConfirmDialog;
 import my.boxman.compat.HoloContent;
+import my.boxman.compat.HoloInputDialog;
 import my.boxman.compat.HoloMessageDialog;
 import my.boxman.compat.HoloPopupMenu;
 import my.boxman.compat.HoloProgressDialog;
@@ -168,9 +169,15 @@ public class BoxManPC extends JFrame {
                 // 那会退化成满屏 no such table。这里把原因明确弹给用户。
                 t.printStackTrace();
                 String msg = t.getMessage() == null ? t.toString() : t.getMessage();
-                JOptionPane.showMessageDialog(null,
-                        "关卡库出错，无法继续游戏！\n\n" + msg,
-                        "推箱快手", JOptionPane.ERROR_MESSAGE);
+                // 此刻还没有任何窗口，所以 owner 传 null（对话框自行居中）。
+                // ⚠️ 必须是模态的 —— 非模态的话下面的 System.exit 会在用户看清之前就把进程干掉。
+                try {
+                    new HoloMessageDialog(null, "推箱快手",
+                            "关卡库出错，无法继续游戏！\n\n" + msg, "退出").setVisible(true);
+                } catch (Throwable ignored) {
+                    // 连对话框都建不出来（例如无图形环境）—— 至少把原因留在 stderr
+                    System.err.println("关卡库出错，无法继续游戏！ " + msg);
+                }
                 System.exit(1);
             }
         });
@@ -511,31 +518,45 @@ public class BoxManPC extends JFrame {
         // 原版 OnItemLongClickListener + registerForContextMenu：长按条目弹 10 项上下文菜单
         // （组别行 childPos < 0，原版不弹）。
         tree.addMouseListener(new MouseAdapter() {
+            /** 本次按下是否落在树内（HoloClick 的「按下在内 → 抬起仍在内」契约）。 */
+            private boolean armed;
             /** 按下时落在哪一行 —— 由 {@link #mousePressed} 记下，见那里的说明。 */
             private TreePath pressedPath;
 
             @Override
             public void mousePressed(MouseEvent e) {
-                // JTree 自己的监听器比本监听器先注册，所以到这一步时它已经把「选中的行」
-                // 设成了用户按下的那一行，然后才去展开/折叠（BasicTreeUI.selectPathForEvent）。
+                // JTree 自己的监听器比本监听器先注册（AWT 按注册顺序派发），所以到这一步时
+                // 它已经把「选中的行」设成了用户按下的那一行，然后才去展开/折叠
+                // （BasicTreeUI.Handler.handleSelection 的顺序就是
+                // ① setSelectionPath ② toggleExpandState，已核对 JDK 源码）。
                 // 因此这里读到的就是「用户按下的是哪一行」，不受之后列表滚动/重排的影响。
-                pressedPath = tree.getSelectionPath();
+                armed = tree.contains(e.getX(), e.getY());
+                pressedPath = armed ? tree.getSelectionPath() : null;
             }
 
             @Override
-            public void mouseClicked(MouseEvent e) {
+            public void mouseReleased(MouseEvent e) {
                 TreePath path = tree.getPathForLocation(e.getX(), e.getY());
-                if (path == null) return;
-                Object last = path.getLastPathComponent();
-                if (!(last instanceof DefaultMutableTreeNode)) return;
-                Object userObject = ((DefaultMutableTreeNode) last).getUserObject();
+                TreePath pressed = pressedPath;
+                boolean fire = armed && tree.contains(e.getX(), e.getY())
+                        && e.getButton() == MouseEvent.BUTTON1;
+                armed = false;
+                pressedPath = null;
 
-                if (SwingUtilities.isRightMouseButton(e)) {
-                    showContextMenu(e, path);
+                // 右键：上下文菜单走「抬起时鼠标底下那一行」（原版 registerForContextMenu 同一行）
+                if (e.isPopupTrigger() || SwingUtilities.isRightMouseButton(e)) {
+                    if (path != null) showContextMenu(e, path);
                     return;
                 }
+                // 原版 onChildClick 走 ACTION_UP → 对应 mouseReleased，而不是 mouseClicked：
+                // MOUSE_CLICKED 会被 Windows 原生层因「按住期间收到任何一次 WM_MOUSEMOVE」吞掉
+                // （见 compat/HoloClick 的类注释），表现为「有时点一次没反应」。
+                if (!fire || path == null) return;
+                Object last = path.getLastPathComponent();
+                if (!(last instanceof DefaultMutableTreeNode)) return;
                 // 只认「按下时那一行的条目」：组别行按下 → 只展开/折叠，绝不打开关卡集
-                if (!path.equals(pressedPath)) return;
+                if (!path.equals(pressed)) return;
+                Object userObject = ((DefaultMutableTreeNode) last).getUserObject();
                 if (userObject instanceof SetItem) {
                     int[] pos = positionOf(path);
                     if (pos != null) browLevels(pos[0], pos[1]);
@@ -1480,30 +1501,29 @@ public class BoxManPC extends JFrame {
         grid.setVisible(true);
     }
 
-    /** 原版 menu_NewSet：新增关卡集 */
+    /** 原版 menu_NewSet：新增关卡集（{@code BoxMan.java:430}）—— 标题「关卡集名称」+ 输入框 + 取消/确定。 */
     private void createNewSet() {
-        String input = JOptionPane.showInputDialog(this, "关卡集名称", myMaps.getNewSetName());
-        if (input == null) return;
-        input = input.trim();
-        if (input.isEmpty()) {
-            MyToast.showToast(this, "无效的名称！" + input, MyToast.LENGTH_SHORT);
-            return;
-        }
-        if (myMaps.mSets3.size() > 0 && mySQLite.m_SQL.find_Set(input, myMaps.mSets3.get(0).id) > 0) {
-            MyToast.showToast(this, "此名称已经存在！\n" + input, MyToast.LENGTH_SHORT);
-            return;
-        }
-        try {
-            long new_ID = mySQLite.m_SQL.add_T(3, input, "", "");
-            set_Node nd = new set_Node();
-            nd.id = new_ID;
-            nd.title = input;
-            myMaps.mSets3.add(nd);
-            refreshTree();
-            MyToast.showToast(this, "新关卡集创建成功！\n" + input, MyToast.LENGTH_SHORT);
-        } catch (Exception e) {
-            MyToast.showToast(this, "未知原因，创建失败！", MyToast.LENGTH_SHORT);
-        }
+        new HoloInputDialog(this, "关卡集名称", myMaps.getNewSetName(), 288, input -> {
+            if (input.isEmpty()) {
+                MyToast.showToast(this, "无效的名称！" + input, MyToast.LENGTH_SHORT);
+                return;
+            }
+            if (myMaps.mSets3.size() > 0 && mySQLite.m_SQL.find_Set(input, myMaps.mSets3.get(0).id) > 0) {
+                MyToast.showToast(this, "此名称已经存在！\n" + input, MyToast.LENGTH_SHORT);
+                return;
+            }
+            try {
+                long new_ID = mySQLite.m_SQL.add_T(3, input, "", "");
+                set_Node nd = new set_Node();
+                nd.id = new_ID;
+                nd.title = input;
+                myMaps.mSets3.add(nd);
+                refreshTree();
+                MyToast.showToast(this, "新关卡集创建成功！\n" + input, MyToast.LENGTH_SHORT);
+            } catch (Exception e) {
+                MyToast.showToast(this, "未知原因，创建失败！", MyToast.LENGTH_SHORT);
+            }
+        }).setVisible(true);
     }
 
     /** 原版 menu_builder：创编关卡 */
@@ -1830,8 +1850,7 @@ public class BoxManPC extends JFrame {
             return importLevelReader(reader, resolveSetId(setTitle), silent);
         } catch (Throwable ex) {
             if (!silent) {
-                JOptionPane.showMessageDialog(this, "导入关卡文件失败: " + ex.getMessage(),
-                        "错误", JOptionPane.ERROR_MESSAGE);
+                new HoloMessageDialog(this, "错误", "导入关卡文件失败: " + ex.getMessage(), "确定").setVisible(true);
             }
             return 0;
         }
@@ -1852,8 +1871,7 @@ public class BoxManPC extends JFrame {
             return importLevelReader(reader, setId, silent);
         } catch (Throwable ex) {
             if (!silent) {
-                JOptionPane.showMessageDialog(this, "导入关卡文件失败: " + ex.getMessage(),
-                        "错误", JOptionPane.ERROR_MESSAGE);
+                new HoloMessageDialog(this, "错误", "导入关卡文件失败: " + ex.getMessage(), "确定").setVisible(true);
             }
             return 0;
         }
@@ -1870,8 +1888,7 @@ public class BoxManPC extends JFrame {
                     resolveSetId(setTitle), silent);
         } catch (Throwable ex) {
             if (!silent) {
-                JOptionPane.showMessageDialog(this, "导入失败: " + ex.getMessage(),
-                        "错误", JOptionPane.ERROR_MESSAGE);
+                new HoloMessageDialog(this, "错误", "导入失败: " + ex.getMessage(), "确定").setVisible(true);
             }
             return 0;
         }
@@ -1884,8 +1901,7 @@ public class BoxManPC extends JFrame {
                     new java.io.BufferedReader(new java.io.StringReader(text)), setId, silent);
         } catch (Throwable ex) {
             if (!silent) {
-                JOptionPane.showMessageDialog(this, "导入失败: " + ex.getMessage(),
-                        "错误", JOptionPane.ERROR_MESSAGE);
+                new HoloMessageDialog(this, "错误", "导入失败: " + ex.getMessage(), "确定").setVisible(true);
             }
             return 0;
         }
@@ -1910,7 +1926,7 @@ public class BoxManPC extends JFrame {
     private int importLevelReader(java.io.BufferedReader reader, long targetSetId, boolean silent)
             throws Exception {
             if (targetSetId <= 0) {
-                if (!silent) JOptionPane.showMessageDialog(this, "创建关卡集失败！", "错误", JOptionPane.ERROR_MESSAGE);
+                if (!silent) new HoloMessageDialog(this, "错误", "创建关卡集失败！", "确定").setVisible(true);
                 return 0;
             }
 
@@ -2015,7 +2031,11 @@ public class BoxManPC extends JFrame {
             refreshTree();
             if (!silent) {
                 String setTitle = myMaps.sFile != null ? myMaps.sFile : String.valueOf(targetSetId);
-                JOptionPane.showMessageDialog(this, "成功导入关卡集: " + setTitle + "\n共导入 " + importedCount + " 个关卡", "导入成功", JOptionPane.INFORMATION_MESSAGE);
+                // 原版 myGridView.java:989/998 的导入统计框：AlertDialog(THEME_HOLO_DARK)
+                // 标题「信息」+ setMessage(inf) + 单个「确定」，setCancelable(false)。
+                new HoloMessageDialog(this, "导入成功",
+                        "成功导入关卡集: " + setTitle + "\n共导入 " + importedCount + " 个关卡", "确定")
+                        .setVisible(true);
             }
             return importedCount;
     }

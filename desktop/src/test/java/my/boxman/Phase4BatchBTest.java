@@ -28,11 +28,21 @@ public class Phase4BatchBTest {
         myExport exp = new myExport("#####\n#@$.#\n#####", "rR", "#####\n#@$.#\n#####", "", true, 0, null, null, "test");
         assertNotNull("myExport frame should be created", exp);
         assertNotNull("et_Action text area should be initialized", exp.et_Action);
-        assertTrue("Content should contain XSB", exp.et_Action.getText().contains("#####"));
-        assertTrue("Content should contain solution", exp.et_Action.getText().contains("Solution"));
 
-        exp.cb_Lurd.setSelected(false);
-        assertNotNull(exp.et_Action.getText());
+        // 原版 myExport.java:146-160：推关卡界面的导出 + 有答案时，初值**只**显示 Lurd，
+        // XSB 默认不勾选（用户勾上 XSB 才会拼成 "XSB + Solution 头 + Lurd"）。
+        // PC 早期用自造的 updateContent() 无条件拼 XSB+答案，是行为偏差。
+        assertEquals("初值应只有 Lurd", "rR", exp.et_Action.getText());
+        assertFalse("推关卡界面且有答案时 XSB 默认不勾选", exp.cb_XSB.isSelected());
+        assertTrue("Lurd 默认勾选", exp.cb_Lurd.isSelected());
+        assertTrue("推关卡界面应显示「导出正推现场」那一行", exp.cb_Cur.isVisible());
+
+        // 勾上 XSB → 拼出 XSB + Solution 头 + Lurd
+        exp.cb_XSB.doClick();
+        String both = exp.et_Action.getText();
+        assertTrue("勾上 XSB 后应含关卡图", both.contains("#####"));
+        assertTrue("勾上 XSB 后应含 Solution 头", both.contains("Solution"));
+        assertTrue("勾上 XSB 后应含答案", both.contains("rR"));
     }
 
     @Test

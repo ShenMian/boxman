@@ -2,6 +2,7 @@ package my.boxman;
 
 import my.boxman.compat.ResourceLoader;
 import my.boxman.compat.android.graphics.*;
+import my.boxman.compat.HoloTap;
 
 import javax.swing.*;
 import java.awt.Color;
@@ -440,30 +441,46 @@ public class myFindViewMap extends JPanel implements MouseListener, MouseMotionL
 
     // ================================================================ 交互
 
+    /** 「两次抬起算一次双击」的判定 —— 原版 {@code GestureDetector.onDoubleTap} 的等价物。 */
+    private final HoloTap tap = new HoloTap();
+    /** 按下那一刻的位置。{@code startX/startY} 在 {@code mouseDragged} 里会被改写，不能用来判 slop。 */
+    private int pressX, pressY;
+
     @Override
     public void mousePressed(MouseEvent e) {
         startX = e.getX();
         startY = e.getY();
+        pressX = startX;
+        pressY = startY;
     }
 
     @Override
-    public void mouseReleased(MouseEvent e) {}
-
-    @Override
-    public void mouseClicked(MouseEvent e) {
+    public void mouseReleased(MouseEvent e) {
         if (m_Find == null) return;
 
-        // 原版 onSingleTapUp：先看是不是点在那两个按钮上
+        // 原版 onSingleTapUp：先看是不是点在那两个按钮上（两个热区都只认单击）
         if (m_rTrun.contains(e.getX(), e.getY())) {
+            tap.reset();
             m_Find.myTrun();
             return;
         }
         if (m_rLevel.contains(e.getX(), e.getY())) {
+            tap.reset();
             m_Find.myLevel();
             return;
         }
 
-        if (e.getClickCount() == 2) {
+        // 拖动结束不算点击（Android 的 touch slop），也顺手把双击计数清掉
+        int dx = e.getX() - pressX, dy = e.getY() - pressY;
+        if (dx * dx + dy * dy > HoloTap.SLOP * HoloTap.SLOP) {
+            tap.reset();
+            return;
+        }
+
+        // ⚠️ 不能挂 mouseClicked + getClickCount()：MOUSE_CLICKED 会被 Windows 原生层因
+        // 「按住期间收到任何一次 WM_MOUSEMOVE」吞掉（见 compat/HoloClick / HoloTap），
+        // 单击表现为「有时没反应」，双击更会因为两击里有一击被吞而彻底失效。
+        if (tap.isDoubleTap(e)) {
             // 原版 onDoubleTap：切换「关卡全貌」（不是切换源/相似关卡！）
             m_Find.toggleLevelAll();
             initArena();
@@ -471,6 +488,11 @@ public class myFindViewMap extends JPanel implements MouseListener, MouseMotionL
         } else {
             doACT(e.getX(), e.getY());
         }
+    }
+
+    /** 必须实现（{@code implements MouseListener}），但点击动作一律挂在 {@code mouseReleased} 上。 */
+    @Override
+    public void mouseClicked(MouseEvent e) {
     }
 
     @Override

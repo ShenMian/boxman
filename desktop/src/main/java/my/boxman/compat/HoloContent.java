@@ -39,6 +39,16 @@ public final class HoloContent {
     public static final Color HOLO_BLUE = new Color(0x33, 0xB5, 0xE5);
     /** 滑杆轨道 */
     public static final Color SLIDER_TRACK = new Color(0x5A, 0x5A, 0x5A);
+    /**
+     * 原版 {@code Theme.Holo}（深色）的 {@code windowBackground}
+     * = {@code @color/background_holo_dark} = {@code #FF000000}（纯黑）。
+     *
+     * <p>布局里没写 {@code android:background} 的窗口（{@code help.xml} /
+     * {@code about.xml} / {@code export_view.xml} …）都会透出这个纯黑底。
+     * 注意它与 {@link #BAND}（{@code #363636}）不是一回事：{@code #363636} 是
+     * 布局**显式**写出来的色条 / 行底色。
+     */
+    public static final Color WINDOW_BG = Color.BLACK;
 
     // ---------------------------------------------------------------- 尺寸
 
@@ -55,6 +65,83 @@ public final class HoloContent {
     /** 原版正文统一字体。 */
     public static Font font(int style) {
         return new Font("Microsoft YaHei", style, TEXT_SIZE);
+    }
+
+    /**
+     * 把顶层窗口的内容区套上原版 Holo 深色 {@code windowBackground}（纯黑）。
+     *
+     * <p>原版 {@code Theme.Holo} 的 {@code windowBackground} 是
+     * {@code @color/background_holo_dark}（{@code #FF000000}）。{@code help.xml} /
+     * {@code about.xml} / {@code export_view.xml} 这些布局的根节点都**没有**
+     * {@code android:background}，所以整屏透出的就是这个纯黑底 —— 而 PC 侧早期
+     * 用的是 Swing 默认的浅灰，属于「窗口主题」偏差（见 {@code PORTING_AUDIT.md} 第 0.2 节）。
+     *
+     * <p>⚠️ 只改**内容区**本身。子面板若自带不透明底色（例如 {@code #363636} 色条），
+     * 仍然会盖住它 —— 这与原版布局的层级完全一致，不要顺手把它们也刷黑。
+     *
+     * @param window 顶层窗口（{@link javax.swing.JFrame} 或 {@link javax.swing.JDialog}）
+     */
+    public static void applyWindowBackground(java.awt.Window window) {
+        Container pane;
+        if (window instanceof JFrame) {
+            pane = ((JFrame) window).getContentPane();
+        } else if (window instanceof JDialog) {
+            pane = ((JDialog) window).getContentPane();
+        } else {
+            return;
+        }
+        pane.setBackground(WINDOW_BG);
+        if (pane instanceof JComponent) {
+            ((JComponent) pane).setOpaque(true);
+        }
+    }
+
+    /**
+     * 深色文本区：原版那些「没有显式 background」的 {@code TextView} / {@code EditText}
+     * 等价物，用纯黑底 + {@link #TEXT} 白字（主题默认 {@code textColorPrimary}）。
+     *
+     * @param editable {@code true} 对应原版 {@code EditText}（可编辑）；
+     *                 {@code false} 对应只读的 {@code TextView}
+     */
+    public static JTextArea textArea(String text, int textSize, boolean editable) {
+        JTextArea ta = new JTextArea(text);
+        ta.setEditable(editable);
+        ta.setBackground(WINDOW_BG);
+        ta.setForeground(TEXT);
+        ta.setCaretColor(TEXT);
+        ta.setFont(new Font(Font.MONOSPACED, Font.PLAIN, textSize));
+        ta.setLineWrap(true);
+        ta.setWrapStyleWord(true);
+        return ta;
+    }
+
+    /** 深色单行输入框（{@code #242424} 底、白字），宽度由外层布局决定。 */
+    public static JTextField darkField(String text) {
+        JTextField tf = new JTextField(text);
+        tf.setFont(font(Font.PLAIN));
+        tf.setBackground(FIELD_BG);
+        tf.setForeground(TEXT);
+        tf.setCaretColor(TEXT);
+        tf.setBorder(new EmptyBorder(FIELD_PAD, FIELD_PAD, FIELD_PAD, FIELD_PAD));
+        tf.setSelectionColor(Color.BLACK);
+        tf.setSelectedTextColor(TEXT);
+        return tf;
+    }
+
+    /**
+     * 深色滚动面板（原版 {@code ScrollView} 等价物）：纯黑底、无边框。
+     * 与 {@link #scroll(Component)} 的区别是后者用 {@code #363636} 列表底，
+     * 这里对应「整屏纯黑」的窗口。
+     */
+    public static JScrollPane windowScroll(Component view) {
+        JScrollPane sp = new JScrollPane(view);
+        sp.setBorder(BorderFactory.createEmptyBorder());
+        sp.setViewportBorder(BorderFactory.createEmptyBorder());
+        sp.setBackground(WINDOW_BG);
+        sp.setOpaque(true);
+        sp.getViewport().setBackground(WINDOW_BG);
+        sp.getViewport().setOpaque(true);
+        return sp;
     }
 
     /** 纯色通栏条（对应布局里的 {@code <View android:background=... android:layout_height="Ndp"/>}）。 */

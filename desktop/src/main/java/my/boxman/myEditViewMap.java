@@ -2,6 +2,7 @@ package my.boxman;
 
 import my.boxman.compat.android.graphics.*;
 import my.boxman.compat.android.view.MotionEvent;
+import my.boxman.compat.HoloTap;
 
 import javax.swing.*;
 import java.awt.Color;
@@ -677,20 +678,34 @@ public class myEditViewMap extends JPanel implements MouseListener, MouseMotionL
         }
     }
 
+    /** 「两次抬起算一次双击」的判定 —— 原版 {@code GestureDetector.onDoubleTap} 的等价物。 */
+    private final HoloTap tap = new HoloTap();
+
     // MouseListener implementation
     @Override public void mousePressed(MouseEvent e) { touchListener.onMouseDown(e.getX(), e.getY(), e.getButton()); }
-    @Override public void mouseReleased(MouseEvent e) { touchListener.onMouseUp(e.getX(), e.getY(), e.getButton()); }
-    @Override public void mouseClicked(MouseEvent e) {
-        if (e.getClickCount() == 2 && mMod == MOD_SELECT && m_Edit != null) {
-            if (m_iR > 0 && m_iR < m_nMapBottom - m_nMapTop) {
-                if (m_iC == 0) m_Edit.My_ReSize(0);
-                else if (m_iC == m_nMapRight - m_nMapLeft) m_Edit.My_ReSize(2);
-            } else if (m_iC > 0 && m_iC < m_nMapRight - m_nMapLeft) {
-                if (m_iR == 0) m_Edit.My_ReSize(1);
-                else if (m_iR == m_nMapBottom - m_nMapTop) m_Edit.My_ReSize(3);
-            }
+
+    @Override public void mouseReleased(MouseEvent e) {
+        touchListener.onMouseUp(e.getX(), e.getY(), e.getButton());
+        // 原版 GestureDetector.onDoubleTap。不能挂 mouseClicked + getClickCount()==2：
+        // MOUSE_CLICKED 会被 Windows 原生层因「按住期间收到任何一次 WM_MOUSEMOVE」吞掉
+        // （见 compat/HoloClick / HoloTap 的类注释），两击里只要有一击被吞，双击就彻底失效。
+        if (tap.isDoubleTap(e)) doDoubleTap(e.getX(), e.getY());
+    }
+
+    /** 原版 {@code myEditViewMap.java:318} 的 {@code onDoubleTap}：双击地图边界 = 缩放该边。 */
+    private void doDoubleTap(int x, int y) {
+        if (mMod != MOD_SELECT || m_Edit == null) return;
+        if (m_iR > 0 && m_iR < m_nMapBottom - m_nMapTop) {
+            if (m_iC == 0) m_Edit.My_ReSize(0);
+            else if (m_iC == m_nMapRight - m_nMapLeft) m_Edit.My_ReSize(2);
+        } else if (m_iC > 0 && m_iC < m_nMapRight - m_nMapLeft) {
+            if (m_iR == 0) m_Edit.My_ReSize(1);
+            else if (m_iR == m_nMapBottom - m_nMapTop) m_Edit.My_ReSize(3);
         }
     }
+
+    /** 必须实现（{@code implements MouseListener}），但点击动作一律挂在 {@code mouseReleased} 上。 */
+    @Override public void mouseClicked(MouseEvent e) {}
     @Override public void mouseEntered(MouseEvent e) {}
     @Override public void mouseExited(MouseEvent e) {}
 

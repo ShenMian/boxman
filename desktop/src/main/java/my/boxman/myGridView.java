@@ -434,19 +434,23 @@ public class myGridView extends JFrame {
         new myAbout1(this, mSetId, msg).setVisible(true);
     }
 
+    /**
+     * 原版 {@code R.id.levels_goto}「定位...」（{@code myGridView.java:517}）：
+     * {@code AlertDialog(THEME_HOLO_DARK)} 标题「跳至」+ {@code goto_dialog.xml}
+     * （「输入位置: 」+ 160dp 数字框）+ 取消/确定，确定后 {@code setSelection(n-1)}。
+     *
+     * <p>PC 端原先用 {@code JOptionPane.showInputDialog} 让用户敲序号 —— 浅色 PC 外观，
+     * 且丢掉了原版 {@code goto_dialog.xml} 的布局。{@link GotoDialog} 就是那个布局的等价物
+     * （此前只被测试与截图工具用到，现在接上真正的调用点）。
+     */
     private void doGoto() {
         if (myMaps.m_lstMaps == null || myMaps.m_lstMaps.isEmpty()) return;
-        String input = JOptionPane.showInputDialog(this, "请输入要跳转的关卡序号 (1 - " + myMaps.m_lstMaps.size() + "):", "定位", JOptionPane.PLAIN_MESSAGE);
-        if (input != null && !input.trim().isEmpty()) {
-            try {
-                int num = Integer.parseInt(input.trim());
-                if (num >= 1 && num <= myMaps.m_lstMaps.size()) {
-                    Rectangle bounds = cardList.get(num - 1).getBounds();
-                    scrollPane.getViewport().scrollRectToVisible(bounds);
-                }
-            } catch (NumberFormatException ignored) {
-            }
-        }
+        // 原版输入框初始是空的，没有「当前关卡」的概念；这里给个 1 作为下界默认值
+        new GotoDialog(this, 1, myMaps.m_lstMaps.size(), idx -> {
+            if (idx < 0 || idx >= cardList.size()) return;
+            Rectangle bounds = cardList.get(idx).getBounds();
+            scrollPane.getViewport().scrollRectToVisible(bounds);
+        }).setVisible(true);
     }
 
     private void openFirstUnsolved() {
@@ -476,19 +480,26 @@ public class myGridView extends JFrame {
         openGame(myMaps.m_lstMaps.get(targetIdx), targetIdx);
     }
 
+    /**
+     * 原版 {@code R.id.levels_col_count}「每行图标个数...」（{@code myGridView.java:729}）：
+     * {@code setSingleChoiceItems(m_menu, myMaps.m_Sets[33], …)} + 单个「取消」按钮，
+     * <b>单击即生效</b>（onClick 里改完就 {@code dialog.dismiss()}）。
+     *
+     * <p>PC 端原先用 {@code JOptionPane.showInputDialog} 让用户敲数字（0~10）——
+     * 既是浅色 PC 外观，也丢掉了「自动 / 1 个 / … / 10 个」这套原版选项文案。
+     */
     private void chooseColumnCount() {
-        String input = JOptionPane.showInputDialog(this, "输入每行图标个数 (1-10，0表示自动):", myMaps.m_Sets[33]);
-        if (input != null) {
-            try {
-                int cols = Integer.parseInt(input.trim());
-                if (cols >= 0 && cols <= 10) {
-                    if (myMaps.m_Sets[33] == 0) myMaps.m_Sets[34] = mCols;
-                    myMaps.m_Sets[33] = cols;
-                    calcColumns();
-                }
-            } catch (NumberFormatException ignored) {
+        final String[] menu = {"自动", "1 个", "2 个", "3 个", "4 个", "5 个",
+                "6 个", "7 个", "8 个", "9 个", "10 个"};
+        HoloChoiceDialog.clickToPick(this, "设置每行的图标个数", menu, myMaps.m_Sets[33], which -> {
+            // 原版 onClick：从「自动」切走之前，先把当前的列数与图标宽冻结进 [34]/[35]
+            if (myMaps.m_Sets[34] == 0) {
+                myMaps.m_Sets[34] = mCols;               // 原版 mGridView.getNumColumns()
+                myMaps.m_Sets[35] = COLUMN_WIDTH_DP;     // 原版 mGridView.getColumnWidth()
             }
-        }
+            myMaps.m_Sets[33] = which;
+            calcColumns();
+        }).setVisible(true);
     }
 
     // ---------------------------------------------------------------- ╋ / 清空列表 / 批量删除

@@ -2,6 +2,8 @@ package my.boxman;
 
 import javax.swing.*;
 import java.awt.*;
+import my.boxman.compat.HoloButton;
+import my.boxman.compat.HoloContent;
 import my.boxman.compat.UiWindow;
 
 public class myAbout1 extends JDialog {
@@ -22,16 +24,20 @@ public class myAbout1 extends JDialog {
     private void initUI(String message) {
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 
+        // 原版 about.xml 没有 android:background → 透出 Theme.Holo 的 windowBackground（纯黑）
         JPanel content = new JPanel();
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setBackground(HoloContent.WINDOW_BG);
+        content.setOpaque(true);
         content.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
 
         // 标题
         JPanel pTitle = new JPanel(new BorderLayout(5, 5));
+        pTitle.setOpaque(false);
         pTitle.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
-        JLabel lblTitle = new JLabel("标题:");
+        JLabel lblTitle = HoloContent.label("标题:");
         lblTitle.setPreferredSize(new Dimension(50, 25));
-        et_Title = new JTextField(myMaps.J_Title != null ? myMaps.J_Title : "");
+        et_Title = HoloContent.darkField(myMaps.J_Title != null ? myMaps.J_Title : "");
         pTitle.add(lblTitle, BorderLayout.WEST);
         pTitle.add(et_Title, BorderLayout.CENTER);
         content.add(pTitle);
@@ -39,10 +45,11 @@ public class myAbout1 extends JDialog {
 
         // 作者
         JPanel pAuthor = new JPanel(new BorderLayout(5, 5));
+        pAuthor.setOpaque(false);
         pAuthor.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
-        JLabel lblAuthor = new JLabel("作者:");
+        JLabel lblAuthor = HoloContent.label("作者:");
         lblAuthor.setPreferredSize(new Dimension(50, 25));
-        et_Author = new JTextField(myMaps.J_Author != null ? myMaps.J_Author : "");
+        et_Author = HoloContent.darkField(myMaps.J_Author != null ? myMaps.J_Author : "");
         pAuthor.add(lblAuthor, BorderLayout.WEST);
         pAuthor.add(et_Author, BorderLayout.CENTER);
         content.add(pAuthor);
@@ -50,13 +57,11 @@ public class myAbout1 extends JDialog {
 
         // 说明 / 注释
         JPanel pComment = new JPanel(new BorderLayout(5, 5));
-        JLabel lblComment = new JLabel("说明:");
+        pComment.setOpaque(false);
+        JLabel lblComment = HoloContent.label("说明:");
         lblComment.setPreferredSize(new Dimension(50, 25));
-        et_Comment = new JTextArea(myMaps.J_Comment != null ? myMaps.J_Comment : "");
-        et_Comment.setLineWrap(true);
-        et_Comment.setWrapStyleWord(true);
-        et_Comment.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
-        JScrollPane spComment = new JScrollPane(et_Comment);
+        et_Comment = HoloContent.textArea(myMaps.J_Comment != null ? myMaps.J_Comment : "", 13, true);
+        JScrollPane spComment = HoloContent.windowScroll(et_Comment);
         spComment.setPreferredSize(new Dimension(400, 180));
         pComment.add(lblComment, BorderLayout.NORTH);
         pComment.add(spComment, BorderLayout.CENTER);
@@ -64,7 +69,7 @@ public class myAbout1 extends JDialog {
         content.add(Box.createVerticalStrut(8));
 
         // 关卡数量统计
-        tv_Count = new JLabel("关卡数量：" + (message != null ? message : ""));
+        tv_Count = HoloContent.label("关卡数量：" + (message != null ? message : ""));
         tv_Count.setAlignmentX(Component.LEFT_ALIGNMENT);
         content.add(tv_Count);
 
@@ -72,8 +77,10 @@ public class myAbout1 extends JDialog {
 
         // 底部按钮栏
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton btnSave = new JButton("保存");
-        JButton btnCancel = new JButton("取消");
+        bottom.setBackground(HoloContent.WINDOW_BG);
+        bottom.setOpaque(true);
+        JButton btnSave = new HoloButton("保存");
+        JButton btnCancel = new HoloButton("取消");
 
         btnSave.addActionListener(e -> {
             saveInfo();
@@ -84,6 +91,9 @@ public class myAbout1 extends JDialog {
         bottom.add(btnSave);
         bottom.add(btnCancel);
         add(bottom, BorderLayout.SOUTH);
+
+        // 原版 Theme.Holo 深色 windowBackground（纯黑）——见 HoloContent.WINDOW_BG
+        HoloContent.applyWindowBackground(this);
 
         // ⚠️ 必须在 UI 全部装好之后再调（见 UiWindow 的说明）
         UiWindow.applyPhoneSize(this);

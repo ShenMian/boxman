@@ -216,7 +216,20 @@ public class Phase19GameViewOptionsMenuTest {
         SwingUtilities.invokeAndWait(() -> redo.dispatchEvent(new MouseEvent(redo,
                 MouseEvent.MOUSE_PRESSED, System.currentTimeMillis(), InputEvent.BUTTON1_DOWN_MASK,
                 5, 5, 1, false, MouseEvent.BUTTON1)));
-        Thread.sleep(650);
+
+        // ⚠️ 不要写死 Thread.sleep(650) —— 长按是 attachLongPress 里的 **500ms 单发** Timer，
+        // 固定睡 650ms 只留 150ms 余量：机器一忙，TimerQueue/EDT 晚于 650ms 才派发，
+        // 松手先到 → mouseReleased 里 timer.stop() → 长按**永远不触发**，
+        // 于是 m_bYanshi 仍是 false、m_nStep 仍是 0，两条断言一起红。
+        // （实测：常态下长按在 502~528ms 生效，余量只有 148ms 上下。）
+        // 这里改成「轮询到长按真的生效」再松手 —— 判据是用例真正关心的那个状态。
+        long longPressDeadline = System.currentTimeMillis() + 5000;
+        while (!win.m_bYanshi && System.currentTimeMillis() < longPressDeadline) {
+            Thread.sleep(5);
+        }
+        assertTrue("按住「前进」500ms 应触发正向演示（长按未生效，余量被 EDT 挤掉了？）",
+                win.m_bYanshi);
+
         SwingUtilities.invokeAndWait(() -> redo.dispatchEvent(new MouseEvent(redo,
                 MouseEvent.MOUSE_RELEASED, System.currentTimeMillis(), 0,
                 5, 5, 1, false, MouseEvent.BUTTON1)));
@@ -271,12 +284,18 @@ public class Phase19GameViewOptionsMenuTest {
         win.processImportedAction();
 
         assertFalse("动作交接后应清除待执行标记", myMaps.m_ActionIsRedy);
-        long deadline = System.currentTimeMillis() + 5000;
+        // ⚠️ 这里必须靠 mMicroTask 变 null 来判定「任务真的跑完了」。
+        // 它由 done() 在 EDT 上置空，而 doInBackground 在 worker 线程上改 m_nCol ——
+        // 所以 mMicroTask 是**跨线程发布**的，字段声明加了 volatile 才有 happens-before
+        // （否则可能「看到任务结束、却看不到它挪过的那一格」，本用例就会偶发红）。
+        long started = System.currentTimeMillis();
+        long deadline = started + 15000;
         while (win.mMicroTask != null && System.currentTimeMillis() < deadline) {
             Thread.sleep(10);
         }
 
-        assertNull("导入动作任务应完成", win.mMicroTask);
+        assertNull("导入动作任务应完成（等了 " + (System.currentTimeMillis() - started) + "ms）",
+                win.mMicroTask);
         assertEquals("导入的 r 应推动仓管员向右移动一格", initialCol + 1, win.m_nCol);
     }
 

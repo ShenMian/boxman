@@ -244,6 +244,59 @@ public class Phase30StaleTaskGuardTest {
         assertFalse("新任务的「无解」标志应当是 false", task.m_bNoSolution);
     }
 
+    // ---------------------------------------------------------------- 停表之后残留的那一拍
+
+    /**
+     * 回归锁：{@code myStop()} 之后**已经排进 EDT 队列的那一拍动画**仍会执行，
+     * 此时 {@code myTimer1..4} 已被置空 —— {@code sleepTimer()} 必须把 null 当成「停表」而不是崩。
+     *
+     * <p>修之前这里必抛（原文）：
+     * {@code java.lang.NullPointerException: Cannot invoke "javax.swing.Timer.isRunning()" because "timer" is null}
+     * —— 一条未捕获的 EDT 异常，既刷屏，又会把本拍之后的收尾逻辑整段跳过。
+     * 关窗口 / 切关的瞬间正好会走到这条路径（构造器起过动画、用户随即关窗）。
+     */
+    @Test
+    public void testStaleAnimationTickAfterStopDoesNotThrow() {
+        int savedSpeed = myMaps.m_Sets[10];
+        int savedInstant = myMaps.m_Sets[6];
+        try {
+            myMaps.m_Sets[10] = 4;          // 最慢档，保证 m_iSleep 下标合法
+            win.bt_IM.setChecked(false);    // 走「逐拍动画」支路，而不是瞬移支路
+
+            win.myStop();                   // myTimer1..4 一起置空 —— 关窗口时就是这个状态
+            win.m_nStep = 3;
+            for (int i = 0; i < 5; i++) win.m_lstMovReDo.offer((byte) 3);
+
+            win.UpData1(1);                 // 这一拍在停表之前就排好了
+
+            assertEquals("这一拍应把待执行步数走完，然后因 timer 为 null 而停表",
+                    0, win.m_nStep);
+        } finally {
+            myMaps.m_Sets[10] = savedSpeed;
+            myMaps.m_Sets[6] = savedInstant;
+            win.m_lstMovReDo.clear();
+        }
+    }
+
+    /**
+     * 回归锁：{@code mTask} / {@code mMicroTask} 是**跨线程发布**的字段，必须是 {@code volatile}。
+     *
+     * <p>写入在 EDT（{@code onImport()} / {@code done()} / {@code myStop()}），读取在别处
+     * （{@code AsyncCountBoxsTask.isCurrent()} 在 worker 线程；用例在等 {@code done()} 的轮询里）。
+     * 少了 {@code volatile} 就没有 happens-before：轮询方可能「看到任务已结束，
+     * 却看不到任务对模型的改动」—— Phase19 的「导入动作任务应完成」/「应推动仓管员向右移动一格」
+     * 就是这么偶发红的。
+     */
+    @Test
+    public void testTaskFieldsArePublishedAcrossThreads() throws Exception {
+        assertTrue("mTask 必须 volatile（EDT 写、worker 线程读）",
+                java.lang.reflect.Modifier.isVolatile(
+                        myGameView.class.getDeclaredField("mTask").getModifiers()));
+        assertTrue("mMicroTask 必须 volatile（done() 在 EDT 置空、用例在别的线程等它）",
+                java.lang.reflect.Modifier.isVolatile(
+                        myGameView.class.getDeclaredField("mMicroTask").getModifiers()));
+    }
+
     // ---------------------------------------------------------------- 辅助
 
     /** 等一个任务跑完（{@code execute()} 过的任务 get() 会返回；没起过的不碰）。 */

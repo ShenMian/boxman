@@ -2,6 +2,8 @@ package my.boxman;
 
 import javax.swing.*;
 import java.awt.*;
+import my.boxman.compat.HoloButton;
+import my.boxman.compat.HoloContent;
 import my.boxman.compat.UiWindow;
 
 public class myAbout extends JDialog {
@@ -14,11 +16,8 @@ public class myAbout extends JDialog {
     private void initUI() {
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 
-        JTextArea tv_help = new JTextArea();
-        tv_help.setEditable(false);
-        tv_help.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
-        tv_help.setLineWrap(true);
-        tv_help.setWrapStyleWord(true);
+        // 原版 help.xml 没有 android:background → 透出 Theme.Holo 的 windowBackground（纯黑）
+        JTextArea tv_help = HoloContent.textArea("", 13, false);
         tv_help.setMargin(new Insets(10, 15, 10, 15));
 
         String s = "《推箱快手》PC版\n\n" +
@@ -41,15 +40,20 @@ public class myAbout extends JDialog {
         tv_help.setText(s);
         tv_help.setCaretPosition(0);
 
-        JScrollPane scrollPane = new JScrollPane(tv_help);
+        JScrollPane scrollPane = HoloContent.windowScroll(tv_help);
         scrollPane.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
         add(scrollPane, BorderLayout.CENTER);
 
         JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton btnClose = new JButton("确定");
+        bottomPanel.setBackground(HoloContent.WINDOW_BG);
+        bottomPanel.setOpaque(true);
+        JButton btnClose = new HoloButton("确定");
         btnClose.addActionListener(e -> dispose());
         bottomPanel.add(btnClose);
         add(bottomPanel, BorderLayout.SOUTH);
+
+        // 原版 Theme.Holo 深色 windowBackground（纯黑）——见 HoloContent.WINDOW_BG
+        HoloContent.applyWindowBackground(this);
 
         // ⚠️ 必须在 UI 全部装好之后再调（见 UiWindow 的说明）
         UiWindow.applyPhoneSize(this);

@@ -188,8 +188,28 @@ public class myPicListView extends JFrame {
         return card;
     }
 
+    /**
+     * 原版 {@code getView()}：只给**已经上屏**的格子解码缩略图。
+     *
+     * <p>⚠️ 这里的闸门必须是 {@code isShowing()} 而不是 {@code isDisplayable()}：
+     * {@link UiWindow#applyPhoneSize} 会调 {@code pack()}，而 {@code pack()} 内部
+     * {@code addNotify()} 之后 {@code isDisplayable()} 就已经为真 ——
+     * 于是「构造完但从未 {@code setVisible(true)}」的窗口也会在后台解码缩略图。
+     *
+     * <p>为什么这不是无害的浪费：解码走 {@code ImageIO.createImageInputStream(File)}
+     * （Windows 上是 {@code RandomAccessFile}，不带 {@code FILE_SHARE_DELETE}），
+     * 只要解码线程还开着文件，同一时刻的 {@code File.delete()} 就会**静默返回 false**。
+     * 实测（5000×5000 PNG，构造后 30ms 内删除）：<b>5/5 全部删不掉</b>；
+     * 而 2600×2600 等到 30ms（解码已结束）就 5/5 成功 —— 这正是
+     * {@code Phase26.picListDeleteRemovesTheFileAndTheListEntry} 那条用例
+     * 只在全量跑时偶发失败的原因（解码窗口与删除的先后取决于调度）。
+     * 原版在 Android 上没有这个问题：Linux 允许 unlink 已打开的文件。
+     *
+     * <p>窗口真的显示出来时照常加载 —— 构造器里挂的 {@code componentShown}
+     * 以及视口变化监听都会再走一遍这里。
+     */
     private void loadVisibleThumbnails() {
-        if (!isDisplayable()) return;
+        if (!isShowing()) return;
         Rectangle visible = scrollPane.getViewport().getViewRect();
         if (visible.width <= 0 || visible.height <= 0) return;
         int generation = gridGeneration;

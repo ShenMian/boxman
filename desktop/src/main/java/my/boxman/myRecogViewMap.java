@@ -6,6 +6,7 @@ import my.boxman.compat.android.graphics.Paint;
 import my.boxman.compat.android.graphics.PointF;
 import my.boxman.compat.android.graphics.Rect;
 import my.boxman.compat.android.graphics.RectF;
+import my.boxman.compat.HoloTap;
 
 import javax.swing.*;
 import java.awt.BasicStroke;
@@ -671,10 +672,17 @@ public class myRecogViewMap extends JPanel implements MouseListener, MouseMotion
 
     // ================================================================ 交互
 
+    /** 「两次抬起算一次双击」的判定 —— 原版 {@code GestureDetector.onDoubleTap} 的等价物。 */
+    private final HoloTap tap = new HoloTap();
+    /** 按下那一刻的位置。{@code startX/startY} 在拖动过程中会被改写，不能用来判 slop。 */
+    private int pressX, pressY;
+
     @Override
     public void mousePressed(MouseEvent e) {
         startX = e.getX();
         startY = e.getY();
+        pressX = startX;
+        pressY = startY;
         mClickPoint.set(startX, startY);
         pressedLamp = lampAt(startX, startY);
         pressed = true;
@@ -693,17 +701,28 @@ public class myRecogViewMap extends JPanel implements MouseListener, MouseMotion
         if (m_Recog != null) m_Recog.actNum = 0;   // 取消定时器功能
         reSetMatrix();
         repaint();
+
+        // 原版 GestureDetector：双击时，第一击仍会触发 onSingleTapUp，第二击触发 onDoubleTap ——
+        // 这里就是同一条：isDoubleTap() 为假（第一击）走 doSingleTap，为真（第二击）走 doDoubleTap。
+        //
+        // ⚠️ 不能挂 mouseClicked + getClickCount()：MOUSE_CLICKED 会被 Windows 原生层因
+        // 「按住期间收到任何一次 WM_MOUSEMOVE」吞掉（见 compat/HoloClick / HoloTap），
+        // 单击表现为「有时没反应」，双击更会因为两击里有一击被吞而彻底失效。
+        //
+        // 拖动结束不算点击。判据用**位移**（Android 的 touch slop）而不是「只要动过就算拖」：
+        // 后者正是 MOUSE_CLICKED 被吞掉的那个毛病，照搬过来就白改了。
+        int dx = e.getX() - pressX, dy = e.getY() - pressY;
+        if (dx * dx + dy * dy > HoloTap.SLOP * HoloTap.SLOP) {
+            tap.reset();       // 这次是拖动，不参与双击计数
+            return;
+        }
+        if (tap.isDoubleTap(e)) doDoubleTap(e.getX(), e.getY());
+        else doSingleTap(e.getX(), e.getY());
     }
 
+    /** 必须实现（{@code implements MouseListener}），但点击动作一律挂在 {@code mouseReleased} 上。 */
     @Override
     public void mouseClicked(MouseEvent e) {
-        // 原版 GestureDetector：双击时，第一击仍会触发 onSingleTapUp，第二击触发 onDoubleTap。
-        // AWT 的事件序列（click(1) 然后 click(2)）与之完全一致。
-        if (e.getClickCount() == 2) {
-            doDoubleTap(e.getX(), e.getY());
-        } else {
-            doSingleTap(e.getX(), e.getY());
-        }
     }
 
     @Override

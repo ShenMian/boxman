@@ -204,17 +204,23 @@ public class myActGMView extends JDialog {
         et_PreEdit.setFont(new Font("Microsoft YaHei", Font.PLAIN, 12));
         et_PreEdit.setToolTipText("恢复");
 
+        // 原版 action_manage.xml 每个 <Button> 都带 android:layout_margin="2dp"，且按钮之间
+        // 还夹着一个 4dp 的 <View> —— 所以相邻按钮的间距是 2+4+2 = **8dp**，
+        // 行的左右两端各留 2dp。PC 早期只放了 strut(4)，间距偏小。
+        // ⚠️ cb_PreEdit 在 XML 里**没有** margin，所以它两侧的间距是 2+4 = 6dp。
+        rowBtn.add(Box.createHorizontalStrut(2));
         rowBtn.add(btLoadAct);
-        rowBtn.add(Box.createHorizontalStrut(4));
+        rowBtn.add(Box.createHorizontalStrut(8));
         rowBtn.add(btSaveAct);
-        rowBtn.add(Box.createHorizontalStrut(4));
+        rowBtn.add(Box.createHorizontalStrut(8));
         rowBtn.add(btClear);
-        rowBtn.add(Box.createHorizontalStrut(4));
+        rowBtn.add(Box.createHorizontalStrut(8));
         rowBtn.add(btSave_t);
-        rowBtn.add(Box.createHorizontalStrut(4));
+        rowBtn.add(Box.createHorizontalStrut(6));
         rowBtn.add(et_PreEdit);
-        rowBtn.add(Box.createHorizontalStrut(4));
+        rowBtn.add(Box.createHorizontalStrut(6));
         rowBtn.add(btDO);
+        rowBtn.add(Box.createHorizontalStrut(2));
 
         content.add(rowBtn);
 

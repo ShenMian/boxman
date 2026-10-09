@@ -81,7 +81,29 @@ public class HoloChoiceDialog extends HoloAlertDialog {
 
     /** 单击列表项即生效（原版 onClick 里直接 {@code dismiss()}）。只有「取消」一个按钮。 */
     public static HoloChoiceDialog clickToPick(Frame owner, String title, String[] items, OnPick onPick) {
+        return clickToPick(owner, title, items, -1, onPick);
+    }
+
+    /**
+     * 同上，但可以预选一项 —— 对应原版
+     * {@code .setSingleChoiceItems(items, <初始下标>, listener)}。
+     *
+     * <p>预选必须在挂监听器<b>之前</b>完成，否则 {@code setSelectedIndex} 自己就会触发一次
+     * 「选中」回调，把框提前关掉。原版没有这个问题：{@code setSingleChoiceItems} 的初始下标
+     * 只用于绘制单选钮，不会回调 {@code onClick}。
+     *
+     * <p>{@code myGridView} 的「设置每行的图标个数」（原版 {@code myGridView.java:749}）就是这种：
+     * 初始下标 {@code myMaps.m_Sets[33]}。
+     *
+     * @param initialIndex 预选下标，{@code <0} 表示不预选
+     */
+    public static HoloChoiceDialog clickToPick(Frame owner, String title, String[] items,
+                                               int initialIndex, OnPick onPick) {
         HoloChoiceDialog d = new HoloChoiceDialog(owner, title, null, items);
+        if (initialIndex >= 0 && initialIndex < items.length) {
+            d.list.setSelectedIndex(initialIndex);
+            d.list.ensureIndexIsVisible(initialIndex);
+        }
         d.list.addListSelectionListener(e -> {
             if (e.getValueIsAdjusting()) return;
             int i = d.list.getSelectedIndex();

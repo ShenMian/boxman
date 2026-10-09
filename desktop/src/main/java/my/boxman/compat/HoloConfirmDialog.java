@@ -59,6 +59,35 @@ public class HoloConfirmDialog extends HoloAlertDialog {
     }
 
     /**
+     * <b>非模态</b>变体 —— 原版 {@code AlertDialog.show()} 本就不阻塞，而且 Android 的
+     * {@code Dialog.show()} 在已显示时直接早退。凡是在<b>定时器动画回调</b>里弹的确认框都必须
+     * 用这个：模态框会在 EDT 上开嵌套事件循环，1ms 定时器在嵌套循环里照旧触发 → 又弹一层
+     * → 栈无限加深 → 「点一下就卡死」（详见 {@link HoloAlertDialog#createNonModal}）。
+     *
+     * <p>{@code myGameView.saveAns()} / {@code saveAns2()} 的「答案太长，保存到文档！」
+     * 以及 {@code DoEvent(10)} 的「关闭调试」走的就是它。
+     *
+     * <p>因为没有阻塞，{@code onPositive} 只在用户真的点了 {@code positiveText} 时执行，
+     * 而且是在<b>事件队列里</b>执行 —— 这正是原版 {@code OnClickListener} 的时序。
+     *
+     * @return 已显示的对话框（非模态，调用方立刻拿回控制权）
+     */
+    public static HoloAlertDialog showNonModal(Frame owner, String title, String message,
+                                               String negativeText, String positiveText,
+                                               Runnable onPositive) {
+        HoloAlertDialog d = HoloAlertDialog.createNonModal(owner, title);
+        d.setContentView(HoloMessageDialog.messageBody(message));
+        d.addButton(negativeText, d::dispose);
+        JButton ok = d.addButton(positiveText, () -> {
+            d.dispose();
+            if (onPositive != null) onPositive.run();
+        });
+        d.setDefaultButton(ok);
+        d.setVisible(true);
+        return d;
+    }
+
+    /**
      * 原版「内容有修改，是否暂存一下？」那一种：{@code 取消(什么都不做) / 否(走 onNo) / 是(走 onYes)}，
      * 且 {@code setCancelable(false)}。
      */

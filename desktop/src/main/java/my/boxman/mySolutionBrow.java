@@ -116,14 +116,17 @@ public class mySolutionBrow extends JFrame {
         listSolutions.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
-                // 长按（PC：右键）要先定好 c_Pos / m_Sel_id，弹菜单 Swing 自己会做
-                onRowAt(listSolutions.locationToIndex(e.getPoint()));
-            }
-
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (javax.swing.SwingUtilities.isRightMouseButton(e)) return;
-                // 原版 onChildClick：只认子项，组头点不出东西
+                // 长按（PC：右键）要先定好 c_Pos / m_Sel_id，弹菜单 Swing 自己会做。
+                //
+                // ⚠️ 这里<b>不需要</b>再挂一个 mouseClicked：原版 onChildClick / onItemLongClick
+                // 干的是同一件事 —— 只把「点的是哪一行」记进 c_Pos / m_Sel_id，真正动作在
+                // onContextItemSelected（case 5）里。而 mousePressed 对左键、右键都会触发，
+                // 右键那次是弹菜单所必需的，左键那次已经把行记好了，所以 mouseClicked 只是
+                // 重复执行一次同样的赋值。
+                //
+                // 顺带修掉一个真实缺陷：MOUSE_CLICKED 会被 Windows 原生层因「按住期间收到任何
+                // 一次 WM_MOUSEMOVE」吞掉（见 compat/HoloClick 的类注释），挂在它上面的动作会
+                // 表现为「有时点一次没反应」。
                 onRowAt(listSolutions.locationToIndex(e.getPoint()));
             }
         });

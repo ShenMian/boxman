@@ -12,6 +12,7 @@ import org.junit.rules.Timeout;
 
 import javax.swing.JDialog;
 import javax.swing.JPopupMenu;
+import javax.swing.SwingUtilities;
 import java.io.File;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -59,7 +60,7 @@ public class Phase26PicListAndFileExplorerTest {
         deleteRecursively(new File(root, "user home"));
         deleteRecursively(new File(root, "Pictures"));
         deleteRecursively(new File(root, "Downloads"));
-        for (String n : new String[] { "m.png", "small.png", "note.txt" }) {
+        for (String n : new String[] { "m.png", "small.png", "note.txt", "big.png" }) {
             new File(root, n).delete();
         }
         assertTrue(new File(root, "aDir").mkdirs());
@@ -419,6 +420,36 @@ public class Phase26PicListAndFileExplorerTest {
         v.onContextItemSelected(1);
         assertFalse("条目应从列表移除", myMaps.mFile_List.contains("m.png"));
         assertFalse("文件应被删除", new File(root, "m.png").exists());
+    }
+
+    /**
+     * 回归锁：**从未 {@code setVisible(true)}** 的窗口不许在后台解码缩略图。
+     *
+     * <p>此前 {@code loadVisibleThumbnails()} 的闸门是 {@code isDisplayable()}，
+     * 而构造器末尾的 {@code UiWindow.applyPhoneSize()} 会 {@code pack()}，
+     * {@code pack()} 里的 {@code addNotify()} 一执行 {@code isDisplayable()} 就为真 ——
+     * 于是「只 new、不 show」的窗口照样起后台解码线程。
+     *
+     * <p>后果在 Windows 上很实在：解码用 {@code RandomAccessFile} 打开图片，
+     * 只要线程还开着文件，同时刻的 {@code File.delete()} 就静默返回 {@code false}。
+     * 用 5000×5000 的 PNG 把解码窗口拉宽到几十毫秒，就能稳定复现
+     * {@link #picListDeleteRemovesTheFileAndTheListEntry} 的偶发失败
+     * （改回 {@code isDisplayable()} 时本用例必红）。
+     */
+    @Test
+    public void picListDoesNotDecodeThumbnailsBeforeTheWindowIsShown() throws Exception {
+        File big = new File(root, "big.png");
+        writeBytes(big, pngBytes(5000, 5000));
+        myMaps.mFile_List.clear();
+        myMaps.mFile_List.add("big.png");
+
+        myPicListView v = picList();                     // 只 new，从不 show
+        assertFalse("用例前提：窗口未上屏", v.isShowing());
+        SwingUtilities.invokeAndWait(() -> { });         // 让构造器排的 loadVisibleThumbnails 跑完
+        Thread.sleep(30);                                // 老代码：解码线程此刻正占着 big.png
+
+        assertTrue("从未上屏的窗口不该占着图片文件（Windows 上会让删除静默失败）",
+                big.delete());
     }
 
     @Test

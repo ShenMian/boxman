@@ -31,6 +31,24 @@ public class HoloMessageDialog extends HoloAlertDialog {
     }
 
     /**
+     * <b>非模态</b>变体 —— 原版 {@code AlertDialog.show()} 本就不阻塞，
+     * 凡是在<b>定时器动画回调</b>里弹的框都必须用这个，否则模态框会在 EDT 上开嵌套事件循环，
+     * 定时器在嵌套循环里重入 → 层层嵌套 → 卡死（详见 {@link HoloAlertDialog#createNonModal}）。
+     *
+     * <p>{@code myGameView.saveAns2()} 的三条「正逆相合或通关！」提示走的就是它。
+     *
+     * @return 已显示的对话框（非模态，调用方立刻拿回控制权）
+     */
+    public static HoloAlertDialog showNonModal(Frame owner, String title, String message,
+                                               String buttonText) {
+        HoloAlertDialog d = HoloAlertDialog.createNonModal(owner, title);
+        d.setContentView(messageBody(message));
+        d.addButton(buttonText, d::dispose);
+        d.setVisible(true);
+        return d;
+    }
+
+    /**
      * 原版 {@code AlertDialog} 的 {@code TextView#message} 区域。
      * 单按钮的 {@link HoloMessageDialog} 与双按钮的 {@link HoloConfirmDialog} 共用。
      */

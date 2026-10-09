@@ -19,7 +19,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import my.boxman.compat.UiWindow;
 import my.boxman.compat.HoloAlertDialog;
+import my.boxman.compat.HoloButton;
+import my.boxman.compat.HoloChoiceDialog;
+import my.boxman.compat.HoloConfirmDialog;
 import my.boxman.compat.HoloContent;
+import my.boxman.compat.HoloMessageDialog;
 import my.boxman.compat.HoloPopupMenu;
 
 public class myGameView extends JFrame {
@@ -40,8 +44,14 @@ public class myGameView extends JFrame {
         }
     }
 
-    AsyncCountBoxsTask mTask;
-    public RunMicroTask mMicroTask;
+    // ⚠️ 这两个字段**跨线程**：写入在 EDT（onImport / done() / myStop()），
+    // 读取在 SwingWorker 自己的线程（AsyncCountBoxsTask 的 isCancelled 判断、
+    // 用例里等 done() 的轮询循环）。不加 volatile 就没有 happens-before ——
+    // 轮询方可能一直读到旧值，也可能在 done() 之后仍然读到非 null，
+    // 从而看到「任务已完成」但**看不到任务对模型的改动**（典型症状：
+    // Phase19 的「导入动作任务应完成」/「应推动仓管员向右移动一格」间歇性失败）。
+    volatile AsyncCountBoxsTask mTask;
+    public volatile RunMicroTask mMicroTask;
 
     /** 测试缝：把「弹模态框」换成「只记不弹」（见 TEST_NOTES 的 dialogShower 一节） */
     java.util.function.Consumer<JDialog> dialogShower = dlg -> dlg.setVisible(true);
@@ -807,6 +817,12 @@ public class myGameView extends JFrame {
      * 这依赖 {@link #initTimers()} 里的 {@code setCoalesce(false)}，详见那里的注释。
      */
     private void sleepTimer(javax.swing.Timer timer, int ms) {
+        // ⚠️ timer 可能是 null：myStop() 会把 myTimer1..4 一起置空，但**已经排进 EDT 队列的
+        // 那一拍**照样会执行，于是走到这里就是 null。不挡的话就是一条未捕获的 EDT 异常
+        // （实测原文："Cannot invoke \"javax.swing.Timer.isRunning()\" because \"timer\" is null"），
+        // 既刷屏，又会把本拍之后的收尾逻辑整段跳过。
+        // 语义上这正是「停表」：myStop() 之后本就不该再排下一拍。
+        if (timer == null) return;
         if (timer.isRunning()) timer.stop();
         timer.setInitialDelay(Math.max(1, ms));
         timer.start();
@@ -1044,6 +1060,46 @@ public class myGameView extends JFrame {
     void showDialog(HoloAlertDialog dlg) {
         if (dlg == null || dlg.isVisible()) return;
         dialogShower.accept(dlg);
+    }
+
+    /**
+     * 原版 {@code DoEvent} case 10 的「关闭调试」框（{@code myGameView.java:2625}）：
+     * 标题「关闭调试」+ 一个<b>默认勾选</b>的复选框「关卡回到该“宏”打开前的状态」+ 单个「确定」。
+     *
+     * <p>PC 端早先把它退化成了 {@code JOptionPane.showConfirmDialog} 的「是 / 否」框 —— 两处不符：
+     * <ol>
+     *   <li>原版是<b>复选框</b>：勾不勾都要关框，勾了才复位关卡；「是 / 否」则把「否」变成了
+     *       「什么都不做、框也不关」，语义完全不同。</li>
+     *   <li>原版 {@code .create().show()} <b>不阻塞</b>，PC 的 {@code JOptionPane} 是模态的。</li>
+     * </ol>
+     * 这里按 {@code setView(isBack)} 的等价物重建：{@code HoloAlertDialog} 外壳 +
+     * 复选框内容 + 单个「确定」，走非模态。
+     *
+     * <p>包内可见（而非 {@code private}）：Phase42 用例要直接驱动它验证复选框语义。
+     */
+    void showCloseMacroDebugDialog() {
+        final JCheckBox isBack = new JCheckBox("关卡回到该“宏”打开前的状态");
+        isBack.setSelected(true);                        // 原版 isBack.setChecked(true)
+        isBack.setOpaque(false);
+        isBack.setForeground(HoloContent.TEXT);          // primary_text_holo_dark
+        isBack.setFont(HoloContent.font(Font.PLAIN));
+        isBack.setFocusPainted(false);
+
+        // 与 HoloMessageDialog.messageBody 同口径：左右 16dp、上下 8dp（TextView#message 的 padding）
+        JPanel body = new JPanel(new BorderLayout());
+        body.setOpaque(false);
+        body.setBorder(new EmptyBorder(8, 16, 8, 16));
+        body.add(isBack, BorderLayout.CENTER);
+
+        HoloAlertDialog dlg = HoloAlertDialog.createNonModal(this, "关闭调试");
+        dlg.setContentView(body);
+        dlg.addButton("确定", () -> {
+            dlg.dispose();
+            if (isBack.isSelected()) levelReset(false);  //正推关卡复位
+            myMaps.isMacroDebug = false;
+            mMap.invalidate();
+        });
+        dlg.setVisible(true);
     }
 
     /** 「死锁移动」提示框是否已在显示（原版 {@code Dialog.mShowing}）。测试可覆写以模拟。 */
@@ -2629,12 +2685,8 @@ public class myGameView extends JFrame {
                 break;
             case 10:
                 if (myMaps.isMacroDebug) {
-                    int r = JOptionPane.showConfirmDialog(this, "关卡回到该“宏”打开前的状态？", "关闭调试", JOptionPane.YES_NO_OPTION);
-                    if (r == JOptionPane.YES_OPTION) {
-                        levelReset(false);
-                    }
-                    myMaps.isMacroDebug = false;
-                    mMap.invalidate();
+                    // 原版 myGameView.java:2625 的「关闭调试」框（见 showCloseMacroDebugDialog）
+                    showCloseMacroDebugDialog();
                 } else {
                     StopMicro();
                     mLoad_Do_Macro();
@@ -3026,10 +3078,13 @@ public class myGameView extends JFrame {
                 file = new File(myMaps.sRoot + myMaps.sPath + my_Name + "(" + n + ").txt");
             }
             final int finalN = n;
-            int ret = JOptionPane.showConfirmDialog(this, "答案或状态太长，保存到文档！\n" + my_Name + "(" + n + ").txt", "注意", JOptionPane.OK_CANCEL_OPTION);
-            if (ret == JOptionPane.OK_OPTION) {
-                saveToFile(str.toString(), my_Name + "(" + finalN + ").txt");
-            }
+            // 原版 myGameView.java:3125 —— AlertDialog(THEME_HOLO_DARK) 标题「注意」+ 取消/确定，
+            // setCancelable(false)。⚠️ 本方法由 UpData1()（动画回调）调用，所以必须用非模态：
+            // 模态框会在 EDT 上开嵌套事件循环，定时器重入 → 层层嵌套 → 卡死。
+            HoloConfirmDialog.showNonModal(this, "注意",
+                    "答案或状态太长，保存到文档！\n" + my_Name + "(" + n + ").txt",
+                    "取消", "确定",
+                    () -> saveToFile(str.toString(), my_Name + "(" + finalN + ").txt"));
         } else {
             long hh = mySQLite.m_SQL.add_S(myMaps.curMap.Level_id,
                     m_Solution,
@@ -3127,10 +3182,12 @@ public class myGameView extends JFrame {
                 file = new File(myMaps.sRoot + myMaps.sPath + my_Name + "(" + n + ").txt");
             }
             final int finalN = n;
-            int ret = JOptionPane.showConfirmDialog(this, "答案太长，保存到文档！\n" + my_Name + "(" + n + ").txt", "注意", JOptionPane.OK_CANCEL_OPTION);
-            if (ret == JOptionPane.OK_OPTION) {
-                saveToFile(str.toString(), my_Name + "(" + finalN + ").txt");
-            }
+            // 原版 myGameView.java:3236 —— 同 saveAns()，标题「注意」+ 取消/确定。
+            // ⚠️ 同样在 UpData1() / UpData3() 的动画回调里，必须非模态。
+            HoloConfirmDialog.showNonModal(this, "注意",
+                    "答案太长，保存到文档！\n" + my_Name + "(" + n + ").txt",
+                    "取消", "确定",
+                    () -> saveToFile(str.toString(), my_Name + "(" + finalN + ").txt"));
         } else {
             long hh = mySQLite.m_SQL.add_S(myMaps.curMap.Level_id,
                     myMaps.curMap.Level_id > 0 ? 1 : 0,
@@ -3158,11 +3215,19 @@ public class myGameView extends JFrame {
                     ans.inf = "移动: " + m_iStep[1] + ", 推动: " + m_iStep[0];
                     ans.time = m_imPort_YASS;
                     myMaps.mState2.add(ans);
-                    JOptionPane.showMessageDialog(this, "答案成功保存！\n(可用进退键观看通关演示)", "正逆相合或通关！", JOptionPane.INFORMATION_MESSAGE);
+                    // 原版 myGameView.java:3272 —— AlertDialog(THEME_HOLO_DARK) 标题「正逆相合或通关！」
+                    // + 单个「确定」，setCancelable(false)。三条都在动画回调里，必须非模态。
+                    HoloMessageDialog.showNonModal(this, "正逆相合或通关！",
+                            "答案成功保存！\n(可用进退键观看通关演示)", "确定");
                 } else if (hh == 0) {
-                    JOptionPane.showMessageDialog(this, "答案有重复！\n移动：" + (m_iStep[1] + m_lstMovReDo.size()) + "，推动：" + (m_iStep[0] + m_iStep[2]) + "，\n本次未做保存！\n(可用进退键观看通关演示)", "正逆相合或通关！", JOptionPane.INFORMATION_MESSAGE);
+                    HoloMessageDialog.showNonModal(this, "正逆相合或通关！",
+                            "答案有重复！\n移动：" + (m_iStep[1] + m_lstMovReDo.size())
+                                    + "，推动：" + (m_iStep[0] + m_iStep[2])
+                                    + "，\n本次未做保存！\n(可用进退键观看通关演示)", "确定");
                 } else {
-                    JOptionPane.showMessageDialog(this, "DB写错误，答案未能保存，请利用剪切板手动保存到其它地方！\n(可用进退键观看通关演示)", "正逆相合或通关！", JOptionPane.ERROR_MESSAGE);
+                    HoloMessageDialog.showNonModal(this, "正逆相合或通关！",
+                            "DB写错误，答案未能保存，请利用剪切板手动保存到其它地方！\n(可用进退键观看通关演示)",
+                            "确定");
                 }
             }
         }
@@ -3207,22 +3272,25 @@ public class myGameView extends JFrame {
 
     /** 原版 {@code R.id.player_ReStart}「重新开始」。 */
     void onReStart() {
-        int ret = JOptionPane.showConfirmDialog(this, "重新开始，确定吗？", "重新开始", JOptionPane.YES_NO_OPTION);
-        if (ret != JOptionPane.YES_OPTION) return;
-        mMap.d_Moves = mMap.m_PicWidth;
-        if (bt_BK.isChecked()) {
-            MyToast.showToast(this, "重新开始！", MyToast.LENGTH_SHORT);
-            levelReset(true);
-        } else {
-            MyToast.showToast(this, "重新开始！", MyToast.LENGTH_SHORT);
-            levelReset(false);
-            if (myMaps.isMacroDebug) {
-                mMap.myMacro.clear();
-                mMap.myMacro.add(0);
+        // 原版 myGameView.java:3462 —— 无标题、取消/确定，复位逻辑整个写在 OnClickListener 里。
+        // （原版那个 Builder 漏写了 THEME_HOLO_DARK，但应用主题本身就是深色，配色按 Holo 走。）
+        HoloConfirmDialog dlg = new HoloConfirmDialog(this, "", "重新开始，确定吗？", "取消", "确定", () -> {
+            mMap.d_Moves = mMap.m_PicWidth;
+            if (bt_BK.isChecked()) {
+                MyToast.showToast(this, "重新开始！", MyToast.LENGTH_SHORT);
+                levelReset(true);
+            } else {
+                MyToast.showToast(this, "重新开始！", MyToast.LENGTH_SHORT);
+                levelReset(false);
+                if (myMaps.isMacroDebug) {
+                    mMap.myMacro.clear();
+                    mMap.myMacro.add(0);
+                }
             }
-        }
-        mMap.curMoves = 0;
-        mMap.invalidate();
+            mMap.curMoves = 0;
+            mMap.invalidate();
+        });
+        dlg.setVisible(true);
     }
 
     /** 原版 {@code R.id.player_Home}「退至首」。 */
@@ -3809,65 +3877,168 @@ public class myGameView extends JFrame {
         return titles;
     }
 
+    /**
+     * 原版 {@code R.id.player_Setup1}「场景设置」（{@code myGameView.java:3554}）。
+     *
+     * <p>原版是 {@code setSingleChoiceItems(m_menu2, -1, …)} 的<b>菜单式</b>单选框：
+     * 单击某一项立刻分派到子对话框，而框本身<b>不关</b>；按钮栏只有一个
+     * {@code setPositiveButton("返回", …)}，点了才 {@code BoxMan.saveSets()} 并关闭。
+     * 只有「奇偶格位明暗度」在分支里自己 {@code dialog.dismiss()}。
+     *
+     * <p>PC 端原先用 {@code JOptionPane.showInputDialog} 的下拉框顶替 —— 既是浅色 PC 外观，
+     * 也丢掉了「子对话框压在父框上、父框保持不动」的层次。
+     *
+     * <p>三个子框的回滚口径照原版：
+     * <ul>
+     *   <li><b>移动速度</b>：{@code onClick} 里就写 {@code m_Sets[10]}，没有「取消」按钮
+     *       （只有「确定」→ {@code saveSets()}），所以<b>不回滚</b>。PC 上靠 ESC 退出。</li>
+     *   <li><b>皮肤 / 背景</b>：{@code onClick} 里立刻应用（即时预览），
+     *       「取消」回滚到打开时的那一项，且背景的「取消」分支<b>不</b>调 {@code setColorBK()}。</li>
+     * </ul>
+     */
     private void showSetup1Dialog() {
-        String[] opts = {"速度设置", "更换皮肤", "更换背景", "奇偶格位明暗度"};
-        String sel = (String) JOptionPane.showInputDialog(this, "请选择设置项:", "设置", JOptionPane.PLAIN_MESSAGE, null, opts, opts[0]);
-        if (sel == null) return;
+        final String[] menu2 = {"速度设置", "更换皮肤", "更换背景", "奇偶格位明暗度"};
+        final HoloChoiceDialog dlg = new HoloChoiceDialog(this, "设置", null, menu2);
+        dlg.list.addListSelectionListener(e -> {
+            if (e.getValueIsAdjusting()) return;
+            int which = dlg.list.getSelectedIndex();
+            if (which < 0) return;
+            switch (which) {
+                case 0:   //速度设置
+                    showSpeedDialog();
+                    break;
+                case 1:   //更换皮肤
+                    showSkinDialog();
+                    break;
+                case 2:   //更换背景
+                    showBkPicDialog();
+                    break;
+                case 3:   //奇偶格位明暗度条
+                    dlg.dispose();          // 原版 dialog.dismiss()
+                    mMap.m_lParityBrightnessShade = true;
+                    mMap.invalidate();
+                    break;
+                default:
+                    break;
+            }
+        });
+        // 原版按钮栏只有一个「返回」：点了才保存设置
+        dlg.addButton("返回", () -> {
+            dlg.dispose();
+            saveSets();
+        });
+        dlg.setVisible(true);
+    }
 
-        if (sel.equals("速度设置")) {
-            String sp = (String) JOptionPane.showInputDialog(this, "选择移动速度:", "移动速度", JOptionPane.PLAIN_MESSAGE, null, m_sSleep, m_sSleep[myMaps.m_Sets[10]]);
-            if (sp != null) {
-                for (int i = 0; i < m_sSleep.length; i++) {
-                    if (m_sSleep[i].equals(sp)) {
-                        myMaps.m_Sets[10] = i;
-                        break;
-                    }
-                }
-                saveSets();
-            }
-        } else if (sel.equals("更换皮肤")) {
-            skinList();
-            if (!myMaps.mFile_List1.isEmpty()) {
-                String[] skins = myMaps.mFile_List1.toArray(new String[0]);
-                String skin = (String) JOptionPane.showInputDialog(this, "选择皮肤:", "皮肤", JOptionPane.PLAIN_MESSAGE, null, skins, myMaps.skin_File);
-                if (skin != null) {
-                    myMaps.skin_File = skin;
-                    myMaps.loadSkins();
-                    mMap.invalidate();
-                    saveSets();
-                }
-            }
-        } else if (sel.equals("更换背景")) {
-            bkPicList();
-            if (!myMaps.mFile_List2.isEmpty()) {
-                String[] bks = myMaps.mFile_List2.toArray(new String[0]);
-                String bk = (String) JOptionPane.showInputDialog(this, "选择背景:", "背景图片", JOptionPane.PLAIN_MESSAGE, null, bks, myMaps.bk_Pic);
-                if (bk != null) {
-                    myMaps.bk_Pic = bk;
-                    myMaps.loadBKPic();
-                    if (bk.equals("使用背景色")) {
-                        setColorBK();
-                    } else if (myMaps.bkPict != null) {
-                        mMap.w_bkPic = myMaps.bkPict.getWidth();
-                        mMap.h_bkPic = myMaps.bkPict.getHeight();
-                        mMap.w_bkNum = myMaps.m_nWinWidth / mMap.w_bkPic + 1;
-                        mMap.h_bkNum = myMaps.m_nWinHeight / mMap.h_bkPic + 1;
-                    }
-                    mMap.invalidate();
-                    saveSets();
-                }
-            }
-        } else if (sel.equals("奇偶格位明暗度")) {
-            mMap.m_lParityBrightnessShade = true;
-            mMap.invalidate();
+    /** 「设置 → 速度设置」：原版 {@code myGameView.java:3567}。只有「确定」，选中项即写回。 */
+    private void showSpeedDialog() {
+        final HoloChoiceDialog speed = new HoloChoiceDialog(this, "移动速度", null, m_sSleep);
+        if (myMaps.m_Sets[10] >= 0 && myMaps.m_Sets[10] < m_sSleep.length) {
+            speed.list.setSelectedIndex(myMaps.m_Sets[10]);   // 原版初始下标就是 m_Sets[10]
         }
+        speed.addButton("确定", () -> {
+            int i = speed.list.getSelectedIndex();
+            speed.dispose();
+            if (i >= 0) myMaps.m_Sets[10] = i;
+            saveSets();
+        });
+        speed.setVisible(true);
+    }
+
+    /** 「设置 → 更换皮肤」：原版 {@code myGameView.java:3591}。选中即预览，「取消」回滚。 */
+    private void showSkinDialog() {
+        skinList();
+        if (myMaps.mFile_List1.isEmpty()) {
+            MyToast.showToast(this, "没找到皮肤图片文档！", MyToast.LENGTH_SHORT);
+            return;
+        }
+        // 原版 m_nItemSelect：找到当前皮肤的下标，找不到就用 0
+        final int init = Math.max(0, myMaps.mFile_List1.indexOf(myMaps.skin_File));
+        final HoloChoiceDialog skin = new HoloChoiceDialog(this, "皮肤", null,
+                myMaps.mFile_List1.toArray(new String[0]));
+        skin.list.setSelectedIndex(init);                     // 必须在挂监听器之前
+        skin.list.addListSelectionListener(e -> {
+            if (e.getValueIsAdjusting()) return;
+            int i = skin.list.getSelectedIndex();
+            if (i < 0) return;
+            myMaps.skin_File = myMaps.mFile_List1.get(i);
+            myMaps.loadSkins();
+            mMap.invalidate();
+        });
+        skin.addButton("取消", () -> {
+            skin.dispose();
+            myMaps.iskinChange = false;
+            myMaps.skin_File = myMaps.mFile_List1.get(init);  //选择的文档
+            myMaps.loadSkins();
+            mMap.invalidate();
+        });
+        skin.addButton("确定", () -> {
+            skin.dispose();
+            myMaps.iskinChange = true;
+        });
+        skin.setVisible(true);
+    }
+
+    /** 「设置 → 更换背景」：原版 {@code myGameView.java:3629}。选中即预览，「取消」回滚。 */
+    private void showBkPicDialog() {
+        bkPicList();
+        if (myMaps.mFile_List2.isEmpty()) {
+            MyToast.showToast(this, "没找到图片文档", MyToast.LENGTH_SHORT);
+            return;
+        }
+        final int init = Math.max(0, myMaps.mFile_List2.indexOf(myMaps.bk_Pic));
+        final HoloChoiceDialog bk = new HoloChoiceDialog(this, "背景图片", null,
+                myMaps.mFile_List2.toArray(new String[0]));
+        bk.list.setSelectedIndex(init);                       // 必须在挂监听器之前
+        bk.list.addListSelectionListener(e -> {
+            if (e.getValueIsAdjusting()) return;
+            int i = bk.list.getSelectedIndex();
+            if (i < 0) return;
+            myMaps.bk_Pic = myMaps.mFile_List2.get(i);        //选择的文档
+            myMaps.loadBKPic();
+            if (i == 0) {                                     // 使用背景色（bkPicList 把它放在第 0 项）
+                setColorBK();
+            } else if (myMaps.bkPict != null) {               // 使用背景图片
+                mMap.w_bkPic = myMaps.bkPict.getWidth();
+                mMap.h_bkPic = myMaps.bkPict.getHeight();
+                mMap.w_bkNum = myMaps.m_nWinWidth / mMap.w_bkPic + 1;
+                mMap.h_bkNum = myMaps.m_nWinHeight / mMap.h_bkPic + 1;
+            }
+            mMap.invalidate();
+        });
+        bk.addButton("取消", () -> {
+            bk.dispose();
+            myMaps.bk_Pic = myMaps.mFile_List2.get(init);     //选择的文档
+            myMaps.loadBKPic();
+            // ⚠️ 原版「取消」分支只重算背景图尺寸，**不**调 setColorBK()（原版的怪癖，照搬）
+            if (init > 0 && myMaps.bkPict != null) {
+                mMap.w_bkPic = myMaps.bkPict.getWidth();
+                mMap.h_bkPic = myMaps.bkPict.getHeight();
+                mMap.w_bkNum = myMaps.m_nWinWidth / mMap.w_bkPic + 1;
+                mMap.h_bkNum = myMaps.m_nWinHeight / mMap.h_bkPic + 1;
+            }
+            mMap.invalidate();
+        });
+        bk.addButton("确定", bk::dispose);
+        bk.setVisible(true);
     }
 
     private void showSetup2Dialog() {
         JDialog dlg = new JDialog(this, "开关选项", true);
         dlg.setLayout(new BorderLayout());
 
+        // 原版这里是 AlertDialog(THEME_HOLO_DARK) + setMultiChoiceItems()：
+        // 面板是 dialog_full_holo_dark 的 #282828，正文 primary_text_holo_dark（浅色）。
+        // 用户要求**保留现有的两列网格 + 单个「确定」布局**，只把配色对齐 Holo，
+        // 免得这个框在一片深色界面里突兀地发白。
+        dlg.getContentPane().setBackground(HoloAlertDialog.PANEL_BG);
+        if (dlg.getContentPane() instanceof JComponent) {
+            ((JComponent) dlg.getContentPane()).setOpaque(true);
+        }
+
         JPanel pnl = new JPanel(new GridLayout(0, 2, 5, 5));
+        pnl.setBackground(HoloAlertDialog.PANEL_BG);
+        pnl.setOpaque(true);
         pnl.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         JCheckBox chk0 = new JCheckBox("双击箱子编号", myMaps.m_Sets[41] == 1);
@@ -3900,8 +4071,20 @@ public class myGameView extends JFrame {
         pnl.add(chk14); pnl.add(chk15);
         pnl.add(chk16);
 
+        // 深色配色：浅色文字 + 透明底（FlatLaf 的复选框图标按前景色绘制，浅色前景才看得见）
+        for (Component c : pnl.getComponents()) {
+            if (c instanceof JCheckBox) {
+                JCheckBox cb = (JCheckBox) c;
+                cb.setOpaque(false);
+                cb.setForeground(HoloContent.TEXT);
+                cb.setFocusPainted(false);
+            }
+        }
+
         JPanel btnPnl = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton btnOk = new JButton("确定");
+        btnPnl.setBackground(HoloAlertDialog.PANEL_BG);
+        btnPnl.setOpaque(true);
+        JButton btnOk = new HoloButton("确定");
         btnOk.addActionListener(e -> {
             myMaps.m_Sets[41] = chk0.isSelected() ? 1 : 0;
             myMaps.m_bBianhao = chk1.isSelected();
@@ -4241,71 +4424,76 @@ public class myGameView extends JFrame {
             myMaps.mMacroList();
             if (myMaps.mFile_List.size() > 0) {
                 String[] list = myMaps.mFile_List.toArray(new String[0]);
-                String sel = (String) JOptionPane.showInputDialog(this, "选择：宏", "宏", JOptionPane.PLAIN_MESSAGE, null, list, list[0]);
-                if (sel != null) {
-                    myMaps.isMacroDebug = false;
-                    myMaps.sAction = myMaps.readMacroFile(sel).split("\n|\r|\n\r|\r\n|\\|");
+                // 原版 myGameView.java:4575 —— AlertDialog(THEME_HOLO_DARK) 标题「选择：宏」+
+                // setSingleChoiceItems(list, -1, …) + 取消/确定，setCancelable(false)。
+                // 未选中就点「确定」什么都不做（原版判 m_nItemSelect > -1）—— 正是 selectThenOk 的语义。
+                HoloChoiceDialog.selectThenOk(this, "选择：宏", null, list, -1, idx -> {
+                    m_nItemSelect = idx;
+                    if (m_nItemSelect > -1) {
+                        myMaps.isMacroDebug = false;
+                        myMaps.sAction = myMaps.readMacroFile(myMaps.mFile_List.get(m_nItemSelect)).split("\n|\r|\n\r|\r\n|\\|");
 
-                    int len = myMaps.sAction.length;
-                    int w, w1, w2;
-                    String str;
-                    for (int k = 0; k < len; k++) {
-                        if (myMaps.sAction[k].trim().isEmpty()) {
-                            myMaps.sAction[k] = "";
-                            continue;
-                        } else {
-                            str = myMaps.qj2bj(myMaps.sAction[k]).trim();
-                        }
-                        w = str.indexOf('<');
-                        if (w >= 0) {
-                            w1 = str.indexOf(';');
-                            if (w1 >= 0 && w1 < w) w = w1;
-                            else {
-                                w2 = str.indexOf('>');
-                                w = str.indexOf(';', w2);
+                        int len = myMaps.sAction.length;
+                        int w, w1, w2;
+                        String str;
+                        for (int k = 0; k < len; k++) {
+                            if (myMaps.sAction[k].trim().isEmpty()) {
+                                myMaps.sAction[k] = "";
+                                continue;
+                            } else {
+                                str = myMaps.qj2bj(myMaps.sAction[k]).trim();
                             }
-                        } else {
-                            w = str.indexOf(';');
+                            w = str.indexOf('<');
+                            if (w >= 0) {
+                                w1 = str.indexOf(';');
+                                if (w1 >= 0 && w1 < w) w = w1;
+                                else {
+                                    w2 = str.indexOf('>');
+                                    w = str.indexOf(';', w2);
+                                }
+                            } else {
+                                w = str.indexOf(';');
+                            }
+                            if (w > 0) {
+                                myMaps.sAction[k] = str.substring(0, w).replaceAll("[\t]", " ").trim();
+                            } else if (w == 0) {
+                                myMaps.sAction[k] = "";
+                            } else {
+                                myMaps.sAction[k] = str;
+                            }
                         }
-                        if (w > 0) {
-                            myMaps.sAction[k] = str.substring(0, w).replaceAll("[\t]", " ").trim();
-                        } else if (w == 0) {
-                            myMaps.sAction[k] = "";
-                        } else {
-                            myMaps.sAction[k] = str;
-                        }
-                    }
 
-                    if (!myMaps.sAction[0].isEmpty() && myMaps.sAction[0].charAt(0) == '=') {
-                        myMaps.m_ActionIsPos = false;
-                    } else {
-                        myMaps.m_ActionIsPos = true;
-                    }
-                    if (myMaps.m_ActionIsPos) {
-                        m_lstMovedHistory.clear();
-                        Iterator<Byte> myItr = m_lstMovUnDo.descendingIterator();
-                        while (myItr.hasNext()) {
-                            m_lstMovedHistory.offer(myItr.next());
+                        if (!myMaps.sAction[0].isEmpty() && myMaps.sAction[0].charAt(0) == '=') {
+                            myMaps.m_ActionIsPos = false;
+                        } else {
+                            myMaps.m_ActionIsPos = true;
+                        }
+                        if (myMaps.m_ActionIsPos) {
+                            m_lstMovedHistory.clear();
+                            Iterator<Byte> myItr = m_lstMovUnDo.descendingIterator();
+                            while (myItr.hasNext()) {
+                                m_lstMovedHistory.offer(myItr.next());
+                            }
+                        }
+                        if (!myMaps.m_ActionIsPos) {
+                            levelReset(false);
+                        }
+
+                        m_nMacro_Row = m_nRow;
+                        m_nMacro_Col = m_nCol;
+                        mMap.myMacro.clear();
+                        mMap.myMacro.add(0);
+                        myMaps.isMacroDebug = false;
+                        StopMicro();
+                        mMicroTask = new RunMicroTask(this);
+                        mMicroTask.execute(0, myMaps.sAction.length - 1);
+                        m_bBusing = false;
+                        mMap.invalidate();
+                        if (!m_lstMovReDo.isEmpty()) {
+                            m_lstMovReDo.clear();
                         }
                     }
-                    if (!myMaps.m_ActionIsPos) {
-                        levelReset(false);
-                    }
-
-                    m_nMacro_Row = m_nRow;
-                    m_nMacro_Col = m_nCol;
-                    mMap.myMacro.clear();
-                    mMap.myMacro.add(0);
-                    myMaps.isMacroDebug = false;
-                    StopMicro();
-                    mMicroTask = new RunMicroTask(this);
-                    mMicroTask.execute(0, myMaps.sAction.length - 1);
-                    m_bBusing = false;
-                    mMap.invalidate();
-                    if (!m_lstMovReDo.isEmpty()) {
-                        m_lstMovReDo.clear();
-                    }
-                }
+                }).setVisible(true);
             } else {
                 MyToast.showToast(this, "没有可读取的“宏”文档！", MyToast.LENGTH_SHORT);
             }
