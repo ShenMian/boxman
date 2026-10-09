@@ -3880,7 +3880,9 @@ public class myGameView extends JFrame {
         JCheckBox chk7 = new JCheckBox("仓管员转向动画", myMaps.m_Sets[27] == 1);
         JCheckBox chk8 = new JCheckBox("长按点位提示关联网", myMaps.m_Sets[3] == 1);
         JCheckBox chk9 = new JCheckBox("自动加载最新状态", myMaps.m_Sets[37] == 1);
-        JCheckBox chk10 = new JCheckBox("禁用逆推目标点", myMaps.m_Sets[32] == 1);
+        // 原版菜单项文字是「定位双推」；「禁用逆推目标点」只是原版代码里的行内注释
+        // 与 INI 键名（见 BoxMan.java 的 file.get/set("操作", "禁用逆推目标点", ...)），不是 UI 文案。
+        JCheckBox chk10 = new JCheckBox("定位双推", myMaps.m_Sets[32] == 1);
         JCheckBox chk11 = new JCheckBox("允许穿越", myMaps.m_Sets[17] == 1);
         JCheckBox chk12 = new JCheckBox("单步进退", myMaps.m_Sets[23] == 1);
         JCheckBox chk13 = new JCheckBox("进度条", (!bt_BK.isChecked() && mMap.m_lGoto) || (bt_BK.isChecked() && mMap.m_lGoto2));
