@@ -46,7 +46,7 @@
 | 项 | 说明 |
 |---|---|
 | 窗口尺寸 | 15 个全屏窗口已是 370×780；**11 个 `AlertDialog` 等价物仍是 PC 尺寸（340~540 宽）**，待处理 |
-| 窗口主题 | `myAbout` / `myAbout1` / `myAbout2` / `Help` / `myExport` 没套原版 `Theme.Holo` 的深色 `windowBackground`（纯黑）；`myGameView.showSetup2Dialog` 应改回 `HoloAlertDialog` + 多选列表（阶段 G ⑤ 新开条目） |
+| 窗口主题 | `myAbout` / `myAbout1` / `myAbout2` / `Help` / `myExport` 没套原版 `Theme.Holo` 的深色 `windowBackground`（纯黑）；`myGameView.showSetup2Dialog` 应改回 `HoloAlertDialog` + 多选列表（阶段 G ⑤ 新开条目）。**注**：这一条讲的是对话框的**载体 / 主题**，与它列出的**条目内容**是两件事 —— 条目清单已于 2026-10-09 对齐到 17 项，见文末「UI 对齐」一节 |
 | 兼容性验证 | 只在 **Windows + JDK 26** 上验证过；macOS / Linux / JDK 8·17·21 未测（计划书 7.2） |
 | 行数仍有差距 | `myExport` 46%、`myFindView` 77%、`myEditView` 79%、`myGameView` 82% —— 缩掉的部分已逐项核过，剩下的是 Android 样板（`findViewById` / `AlertDialog` / `Menu`），但**没有再做逐行复核** |
 | 细节口径 | `myActGMView` 按钮行仍用 `4dp` strut 而非原版的 `layout_margin="2dp"`；`myFindView` 相似度闸门分母取源关卡面积、`ARGB_4444` 量化等「照抄原版怪癖」的地方，见各阶段小节 |
@@ -1963,12 +1963,18 @@ Holo 按钮的半透明底必须有正确的合成背景才不会发灰。
 | `HoloAlertDialog.addButton` | `AlertDialog` 的底栏按钮是 `Widget.Holo.Button.Borderless`（`selectableItemBackground`），**本来就无边框**，只有按压/聚焦的白色水波 —— 与 `btn_default_holo_dark` 是两回事。已加测试锁住它不会被「统一」掉 |
 | `recog_view.xml` 的 9 个元素钮 | 显式 `#ff334455`，不是平台按钮；PC 早已自绘（阶段 D-2） |
 | `myAbout` / `myAbout1` / `myAbout2` / `Help` 的底栏按钮 | 原版 `help.xml` / `about.xml` **没有按钮**，PC 自造；且这几个窗口**没套原版深色主题**（黑底），单把按钮改成 Holo 反而更不协调 |
-| `myGameView.showSetup2Dialog` 的「确定」 | 原版这里是 `AlertDialog.setMultiChoiceItems()`，PC 自造成一个浅色 `JDialog`。整个对话框都要重做，不在本阶段 |
+| `myGameView.showSetup2Dialog` 的「确定」 | 原版这里是 `AlertDialog.setMultiChoiceItems()`，PC 自造成一个浅色 `JDialog`。整个对话框（**载体**）都要重做，不在本阶段。⚠️ 别与「条目清单」混淆：**清单**已于 2026-10-09 对齐到 17 项（文末「UI 对齐」一节），但**载体仍是浅色 `JDialog` + 单个「确定」** |
 
 > **🆕 新开条目（留给后续阶段）**：`myAbout` / `myAbout1` / `myAbout2` / `Help` /
 > `myExport` 这几个窗口没有套原版 `Theme.Holo` 的深色 `windowBackground`（纯黑），
 > 连带 `myGameView.showSetup2Dialog` 应改回 `HoloAlertDialog` + 多选列表。
 > 这是一条**窗口主题 / 对话框载体**的线，比按钮样式大。
+>
+> ⚠️ **别与「条目清单」混淆**（2026-10-09 补注）：上面这条讲的是**载体 / 主题**
+> —— 浅色 `JDialog` + `JCheckBox` + 单个「确定」→ `HoloAlertDialog` + 多选列表
+> + `重置 / 默认 / 保存` 三键，**至今仍未做**；而对话框里列出的**条目内容**
+> 已于 2026-10-09 对齐到 17 项（`定位双推` 文案修正 + 补回 `演示时仅推动`），
+> 见文末「UI 对齐 —— 『开关选项』条目清单与原版对齐」一节。
 
 ### 6. 测试
 
@@ -3085,3 +3091,81 @@ assertEquals("G_State 里必须真的多出一行答案", 1, ansCount);
 以及 `Level_id` 不回填，**这三处 Android 原版一模一样**（`android/.../mySQLite.java`
 第 1169、1473 行，`android/.../mySplitLevelsFragment.java` 的剪切板分支）。属于原版自带的缺陷，
 PC 侧一并修正；`android/` 目录保持原样不动，以便随时对照。
+
+---
+
+## UI 对齐 —— 「开关选项」条目清单与原版对齐（已完成，2026-10-09）
+
+### 1. 缺口
+
+原版 `myGameView.player_Setup2`（`android/.../myGameView.java:3687-3800`）用
+`AlertDialog.THEME_HOLO_DARK` + `setMultiChoiceItems()` 列出 **20 项**开关，
+底部三键 `重置 / 默认 / 保存`。PC 侧 `showSetup2Dialog()` 自造成一个浅色
+`JDialog` + `JCheckBox`，**只有 16 项**，且第 11 项文案抄错了层：
+
+| 原版序号 | 原版文案 | PC 改前 | 判定 |
+|---|---|---|---|
+| 11 | `定位双推` | `禁用逆推目标点` | ❌ 抄了原版的**行内注释**，不是 UI 文案 |
+| 16 | `系统导航键` | （无） | Android 专有，不移植 |
+| 17 | `禁用全屏` | （无） | Android 专有，不移植 |
+| 18 | `演示时仅推动` | （无） | ❌ **漏移植**（PC 上照样有意义） |
+| 20 | `音量键选择关卡` | （无） | Android 专有，不移植 |
+
+#### 三层名字必须分清（本项目通用教训）
+
+同一个开关在原版里有**三个名字**，而且原版自己就不一致 —— 抄错任一层都会得到
+「看着对、其实错」的偏差：
+
+| 层 | 例子（`m_Sets[32]`） | 出处 |
+|---|---|---|
+| UI 文案（用户看到的） | `定位双推` | `android/.../myGameView.java:3699` |
+| 代码行内注释 | `//禁用逆推目标点` | 同文件 `:3721` |
+| INI 键名 | `"操作" / "禁用逆推目标点"` | `android/.../BoxMan.java:828 / 898` |
+
+### 2. 改法
+
+- **`2305245`** —— `showSetup2Dialog()` 第 11 项文案 `禁用逆推目标点` → **`定位双推`**。
+  **INI 键名保持 `禁用逆推目标点` 不动**：原版存取用的就是这个键，改了就读不回
+  真机（以及此前 PC 版）存下的设置。
+- **`6d13c3e`** —— 补回 **`演示时仅推动`**（`m_Sets[28]`），插在 `自动爬阶梯` 与
+  `显示当前时间提示` 之间，保持原版的相对顺序。对话框现为 **17 项**。
+- 两处的**行为**本来就已逐行移植，本次只是补回 / 订正 **UI 入口**：
+  `定位双推` 的判定与绘制在 `myGameViewMap` 447 / 472 / 1242 / 1549（与 `android/`
+  同文件逐行一致）；`演示时仅推动` 在 `myGameView` 987。
+
+### 3. 刻意不移植的 3 项（Android 平台专有）
+
+| 项 | `m_Sets` | 为什么 PC 不需要 |
+|---|---|---|
+| 系统导航键 | `[16]` | PC 没有系统虚拟导航栏（`myEditView` 的 `edit_setup` 里也只存开关、不生效） |
+| 禁用全屏 | `[20]` | PC 窗口没有「全屏」这个被禁对象 |
+| 音量键选择关卡 | `[15]` | PC 没有音量键 |
+
+> 这 3 项的**值**仍会被 `saveSets()` 写进 `BoxMan.ini`（`myGameView.java:4185 / 4188 / 4189`），
+> 与真机存档保持互通，只是 PC 界面上没有入口。
+
+### 4. 回归测试（新增 `Phase39Setup2DialogTest`，6 条）
+
+沿用 `Phase33` 的源码扫描写法（`codeOf` 先剥注释 + `methodBody` 取方法体），
+按**顺序**锁死对话框的 17 项清单：
+
+| 用例 | 钉住什么 |
+|---|---|
+| `listsEveryPortedOptionInTheOriginalOrder` | 17 项、顺序与原版（去掉 3 项专有后）完全一致 |
+| `reversePushToggleUsesTheOriginalLabel` | 有 `定位双推`、无 `禁用逆推目标点` |
+| `reversePushToggleStillBindsToSet32` | 该开关仍读 / 写 `m_Sets[32]` |
+| `demoPushOnlyToggleBindsToSet28` | 新增项读 / 写 `m_Sets[28]` |
+| `iniKeyKeepsTheOriginalName` | INI 键名没被跟着 UI 文案改名 |
+| `androidOnlyOptionsAreNotPorted` | 3 项专有不出现在对话框里 |
+
+### 5. 基线
+
+**49 个用例类 / 512 个测试用例，0 失败 0 错误 0 跳过**（本次新增 `Phase39Setup2DialogTest` 6 条。
+本文件上一份记录的基线是 48 类 / 493 例，其间另有若干用例随其它改动加入）。
+
+### 6. ⚠️ 仍未完成：对话框**载体**（与本条不是一回事）
+
+本节只对齐了**条目内容**。`PORTING_AUDIT.md:49 / :1966 / :1970` 记的那条待办是**另一件事**：
+把自造的浅色 `JDialog` + `JCheckBox` + 单个「确定」，换成原版的
+`HoloAlertDialog` + 多选列表 + `重置 / 默认 / 保存` 三键。**该待办依然未做** ——
+用户 2026-10-09 明确「UI 风格不需要变」，故本轮不动载体。
